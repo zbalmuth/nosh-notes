@@ -7,13 +7,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      includeAssets: ['favicon.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'Nosh Notes',
         short_name: 'Nosh Notes',
-        description: 'Your groovy restaurant journal',
-        theme_color: '#CC5500',
-        background_color: '#FFF8E7',
+        description: 'Your restaurant journal',
+        theme_color: '#0F0F23',
+        background_color: '#0F0F23',
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',

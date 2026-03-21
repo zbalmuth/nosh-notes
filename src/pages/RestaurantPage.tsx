@@ -291,6 +291,7 @@ export function RestaurantPage() {
                     key={dish.id}
                     dish={dish}
                     onDelete={() => handleDeleteDish(dish.id)}
+                    onEdit={() => navigate(`/restaurant/${id}/dish/${dish.id}/edit`)}
                   />
                 ))}
             </div>

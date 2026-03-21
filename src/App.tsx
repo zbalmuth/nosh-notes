@@ -7,6 +7,7 @@ import { HomePage } from './pages/HomePage';
 import { RestaurantPage } from './pages/RestaurantPage';
 import { AddRestaurantPage } from './pages/AddRestaurantPage';
 import { AddDishPage } from './pages/AddDishPage';
+import { EditDishPage } from './pages/EditDishPage';
 import { MapPage } from './pages/MapPage';
 import { BottomNav } from './components/BottomNav';
 import { AppProvider } from './hooks/useAppContext';
@@ -52,6 +53,7 @@ function App() {
               <Route path="/restaurant/:id" element={<RestaurantPage />} />
               <Route path="/add-restaurant" element={<AddRestaurantPage />} />
               <Route path="/restaurant/:restaurantId/add-dish" element={<AddDishPage />} />
+              <Route path="/restaurant/:restaurantId/dish/:dishId/edit" element={<EditDishPage />} />
               <Route path="/map" element={<MapPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

@@ -7,7 +7,6 @@ import {
   Filter,
   ChevronDown,
   X,
-  List,
   Trash2,
 } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
@@ -33,9 +32,9 @@ export function HomePage() {
   const [selectedCuisine, setSelectedCuisine] = useState<string>('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [showListDropdown, setShowListDropdown] = useState(false);
   const [showNewList, setShowNewList] = useState(false);
   const [newListName, setNewListName] = useState('');
-  const [showListManager, setShowListManager] = useState(false);
 
   const filtered = useMemo(() => {
     let result = restaurants;
@@ -72,26 +71,142 @@ export function HomePage() {
     setShowNewList(false);
   };
 
+  const currentListLabel = selectedList === 'all' ? 'All Restaurants' : selectedList;
+
   if (loading) {
     return <div className="loading-spinner" style={{ marginTop: 60 }} />;
   }
 
   return (
     <div>
-      {/* Header */}
+      {/* Header with list selector */}
       <div className="page-header">
-        <h1 style={{ flex: 1 }}>🍽️ Nosh Notes</h1>
+        <div style={{ flex: 1, position: 'relative' }}>
+          <button
+            onClick={() => setShowListDropdown(!showListDropdown)}
+            style={{
+              background: 'none', border: 'none', padding: 0,
+              display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+            }}
+          >
+            <h1 style={{ fontSize: 20 }}>{currentListLabel}</h1>
+            <ChevronDown size={18} color="var(--hot-pink)" />
+          </button>
+
+          {/* List dropdown */}
+          {showListDropdown && (
+            <>
+              <div
+                style={{ position: 'fixed', inset: 0, zIndex: 149 }}
+                onClick={() => setShowListDropdown(false)}
+              />
+              <div
+                style={{
+                  position: 'absolute', top: '100%', left: 0,
+                  marginTop: 8, zIndex: 150,
+                  background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius)', minWidth: 220,
+                  boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
+                  overflow: 'hidden',
+                }}
+              >
+                {/* All Restaurants */}
+                <button
+                  onClick={() => { setSelectedList('all'); setShowListDropdown(false); }}
+                  style={{
+                    width: '100%', textAlign: 'left', padding: '12px 16px',
+                    background: selectedList === 'all' ? 'var(--bg-secondary)' : 'none',
+                    border: 'none', color: 'var(--text-primary)', fontSize: 14,
+                    fontWeight: selectedList === 'all' ? 600 : 400,
+                    borderBottom: '1px solid var(--border)', cursor: 'pointer',
+                  }}
+                >
+                  All Restaurants
+                </button>
+
+                {/* Each list */}
+                {lists.map((list) => (
+                  <div
+                    key={list.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      borderBottom: '1px solid var(--border)',
+                      background: selectedList === list.name ? 'var(--bg-secondary)' : 'none',
+                    }}
+                  >
+                    <button
+                      onClick={() => { setSelectedList(list.name); setShowListDropdown(false); }}
+                      style={{
+                        flex: 1, textAlign: 'left', padding: '12px 16px',
+                        background: 'none', border: 'none', color: 'var(--text-primary)',
+                        fontSize: 14, fontWeight: selectedList === list.name ? 600 : 400,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {list.name}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`Delete list "${list.name}"?`)) {
+                          deleteList(list.id);
+                          if (selectedList === list.name) setSelectedList('all');
+                        }
+                      }}
+                      style={{
+                        background: 'none', border: 'none', padding: '8px 12px',
+                        color: 'var(--text-muted)', cursor: 'pointer',
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+
+                {/* Create new list */}
+                {showNewList ? (
+                  <div style={{ padding: 12, display: 'flex', gap: 8 }}>
+                    <input
+                      className="input"
+                      placeholder="List name..."
+                      value={newListName}
+                      onChange={(e) => setNewListName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleCreateList()}
+                      autoFocus
+                      style={{ fontSize: 13, padding: '8px 12px' }}
+                    />
+                    <button
+                      className="btn btn-primary"
+                      style={{ padding: '8px 12px', fontSize: 13 }}
+                      onClick={handleCreateList}
+                    >
+                      Add
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowNewList(true)}
+                    style={{
+                      width: '100%', textAlign: 'left', padding: '12px 16px',
+                      background: 'none', border: 'none',
+                      color: 'var(--electric-blue)', fontSize: 14,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    <Plus size={14} />
+                    New List
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
         <button
           onClick={() => setShowSearch(!showSearch)}
           style={{ background: 'none', border: 'none', color: 'var(--hot-pink)' }}
         >
           {showSearch ? <X size={22} /> : <Search size={22} />}
-        </button>
-        <button
-          onClick={() => setShowListManager(!showListManager)}
-          style={{ background: 'none', border: 'none', color: 'var(--hot-pink)' }}
-        >
-          <List size={22} />
         </button>
       </div>
 
@@ -139,24 +254,6 @@ export function HomePage() {
 
       {showFilters && (
         <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {/* List filter */}
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>List</label>
-            <div className="select-wrapper">
-              <select
-                value={selectedList}
-                onChange={(e) => setSelectedList(e.target.value)}
-              >
-                <option value="all">All Lists</option>
-                {lists.map((l) => (
-                  <option key={l.id} value={l.name}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
           {/* City filter */}
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label>City</label>
@@ -167,9 +264,7 @@ export function HomePage() {
               >
                 <option value="all">All Cities</option>
                 {cities.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
+                  <option key={c} value={c}>{c}</option>
                 ))}
               </select>
             </div>
@@ -185,20 +280,17 @@ export function HomePage() {
               >
                 <option value="all">All Cuisines</option>
                 {cuisineTags.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
+                  <option key={c} value={c}>{c}</option>
                 ))}
               </select>
             </div>
           </div>
 
-          {(selectedList !== 'all' || selectedCity !== 'all' || selectedCuisine !== 'all') && (
+          {(selectedCity !== 'all' || selectedCuisine !== 'all') && (
             <button
               className="btn btn-secondary"
               style={{ fontSize: 13, padding: '8px 16px' }}
               onClick={() => {
-                setSelectedList('all');
                 setSelectedCity('all');
                 setSelectedCuisine('all');
               }}
@@ -206,70 +298,6 @@ export function HomePage() {
               Clear Filters
             </button>
           )}
-        </div>
-      )}
-
-      {/* List Manager Modal */}
-      {showListManager && (
-        <div className="dialog-overlay" onClick={() => setShowListManager(false)}>
-          <div className="dialog-content" onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h2 style={{ fontFamily: "'Righteous', cursive", fontSize: 20, color: 'var(--hot-pink)' }}>
-                My Lists
-              </h2>
-              <button onClick={() => setShowListManager(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)' }}>
-                <X size={24} />
-              </button>
-            </div>
-
-            {lists.map((list) => (
-              <div
-                key={list.id}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '10px 0',
-                  borderBottom: '1px solid var(--border)',
-                }}
-              >
-                <span style={{ fontWeight: 500 }}>{list.name}</span>
-                <button
-                  onClick={() => {
-                    if (confirm(`Delete list "${list.name}"?`)) deleteList(list.id);
-                  }}
-                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', padding: 4 }}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ))}
-
-            {showNewList ? (
-              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                <input
-                  className="input"
-                  placeholder="List name..."
-                  value={newListName}
-                  onChange={(e) => setNewListName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleCreateList()}
-                  autoFocus
-                />
-                <button className="btn btn-primary" onClick={handleCreateList}>
-                  Add
-                </button>
-              </div>
-            ) : (
-              <button
-                className="btn btn-secondary"
-                style={{ width: '100%', marginTop: 12 }}
-                onClick={() => setShowNewList(true)}
-              >
-                <Plus size={16} />
-                New List
-              </button>
-            )}
-          </div>
         </div>
       )}
 

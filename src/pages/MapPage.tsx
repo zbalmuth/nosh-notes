@@ -1,7 +1,21 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Filter, MapPin, Star } from 'lucide-react';
+import { ArrowLeft, Filter, Star, X } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import type { Restaurant } from '../types';
+
+// Custom marker icon
+const markerIcon = new L.Icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
 
 export function MapPage() {
   const navigate = useNavigate();
@@ -12,6 +26,11 @@ export function MapPage() {
   const [selectedCuisine, setSelectedCuisine] = useState('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const markersRef = useRef<L.LayerGroup | null>(null);
 
   const filtered = useMemo(() => {
     let result = restaurants.filter((r) => r.latitude && r.longitude);
@@ -22,16 +41,67 @@ export function MapPage() {
     return result;
   }, [restaurants, favoritesOnly, selectedList, selectedCity, selectedCuisine]);
 
-  // Build a static map URL using OpenStreetMap embed
-  const mapCenter = useMemo(() => {
-    if (filtered.length === 0) return { lat: 40.7128, lng: -74.006 }; // NYC default
-    const lat = filtered.reduce((s, r) => s + (r.latitude || 0), 0) / filtered.length;
-    const lng = filtered.reduce((s, r) => s + (r.longitude || 0), 0) / filtered.length;
-    return { lat, lng };
+  // Initialize map
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) return;
+
+    const map = L.map(mapContainerRef.current, {
+      zoomControl: true,
+      attributionControl: false,
+    }).setView([40.7128, -74.006], 12);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    mapRef.current = map;
+    markersRef.current = L.layerGroup().addTo(map);
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      markersRef.current = null;
+    };
+  }, []);
+
+  // Update markers when filtered restaurants change
+  useEffect(() => {
+    if (!mapRef.current || !markersRef.current) return;
+
+    markersRef.current.clearLayers();
+
+    if (filtered.length === 0) return;
+
+    const bounds = L.latLngBounds([]);
+
+    filtered.forEach((r) => {
+      if (!r.latitude || !r.longitude) return;
+
+      const marker = L.marker([r.latitude, r.longitude], { icon: markerIcon });
+
+      marker.bindPopup(`
+        <div style="font-family: sans-serif; min-width: 120px;">
+          <strong style="font-size: 14px;">${r.name}</strong>
+          <br/><span style="font-size: 12px; color: #666;">${r.city || ''}${r.state ? ', ' + r.state : ''}</span>
+          ${r.cuisine_tags?.length ? '<br/><span style="font-size: 11px; color: #999;">' + r.cuisine_tags.slice(0, 2).join(', ') + '</span>' : ''}
+        </div>
+      `, { closeButton: false });
+
+      marker.on('click', () => {
+        setSelectedRestaurant(r);
+      });
+
+      marker.addTo(markersRef.current!);
+      bounds.extend([r.latitude, r.longitude]);
+    });
+
+    if (bounds.isValid()) {
+      mapRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+    }
   }, [filtered]);
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="page-header">
         <button
           onClick={() => navigate(-1)}
@@ -39,7 +109,7 @@ export function MapPage() {
         >
           <ArrowLeft size={22} />
         </button>
-        <h1 style={{ flex: 1 }}>Map</h1>
+        <h1 style={{ flex: 1 }}>Map ({filtered.length})</h1>
         <button
           onClick={() => setShowFilters(!showFilters)}
           style={{ background: 'none', border: 'none', color: 'var(--hot-pink)' }}
@@ -48,8 +118,8 @@ export function MapPage() {
         </button>
       </div>
 
-      {/* Filters */}
-      <div style={{ padding: '8px 20px 0', display: 'flex', gap: 8 }}>
+      {/* Quick filters */}
+      <div style={{ padding: '8px 20px 0', display: 'flex', gap: 8, flexShrink: 0 }}>
         <button
           className={`chip ${favoritesOnly ? 'active' : ''}`}
           onClick={() => setFavoritesOnly(!favoritesOnly)}
@@ -57,10 +127,16 @@ export function MapPage() {
           <Star size={12} fill={favoritesOnly ? 'var(--white)' : 'none'} />
           Favorites
         </button>
+        {selectedList !== 'all' && (
+          <span className="chip active" style={{ fontSize: 11 }}>{selectedList}</span>
+        )}
+        {selectedCuisine !== 'all' && (
+          <span className="chip active" style={{ fontSize: 11 }}>{selectedCuisine}</span>
+        )}
       </div>
 
       {showFilters && (
-        <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label>List</label>
             <div className="select-wrapper">
@@ -92,50 +168,61 @@ export function MapPage() {
       )}
 
       {/* Map */}
-      <div style={{ padding: '12px 20px' }}>
-        <div className="map-container">
-          <iframe
-            title="Restaurant Map"
-            width="100%"
-            height="100%"
-            style={{ border: 0 }}
-            src={`https://www.openstreetmap.org/export/embed.html?bbox=${mapCenter.lng - 0.05}%2C${mapCenter.lat - 0.05}%2C${mapCenter.lng + 0.05}%2C${mapCenter.lat + 0.05}&layer=mapnik`}
-          />
-        </div>
+      <div ref={mapContainerRef} style={{ flex: 1, minHeight: 300 }} />
 
-        {/* Restaurant pins list */}
-        <div style={{ marginTop: 16 }}>
-          <h3 style={{ fontFamily: "'Righteous', cursive", fontSize: 16, color: 'var(--hot-pink)', marginBottom: 8 }}>
-            Restaurants on Map ({filtered.length})
-          </h3>
-          {filtered.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-              No restaurants with location data match your filters.
-            </p>
-          ) : (
-            filtered.map((r) => (
-              <div
-                key={r.id}
-                className="card"
-                style={{ marginBottom: 8, cursor: 'pointer', padding: 12 }}
-                onClick={() => navigate(`/restaurant/${r.id}`)}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <MapPin size={16} color="var(--hot-pink)" />
-                  <div>
-                    <strong style={{ fontFamily: "'Righteous', cursive", fontSize: 14 }}>
-                      {r.name}
-                    </strong>
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {r.city}{r.state ? `, ${r.state}` : ''}
-                    </p>
-                  </div>
+      {/* Selected restaurant popup */}
+      {selectedRestaurant && (
+        <div
+          style={{
+            position: 'absolute', bottom: 80, left: 16, right: 16,
+            zIndex: 1000,
+          }}
+        >
+          <div
+            className="card neon-glow"
+            style={{ padding: 16, cursor: 'pointer', position: 'relative' }}
+            onClick={() => navigate(`/restaurant/${selectedRestaurant.id}`)}
+          >
+            <button
+              onClick={(e) => { e.stopPropagation(); setSelectedRestaurant(null); }}
+              style={{
+                position: 'absolute', top: 8, right: 8,
+                background: 'none', border: 'none', color: 'var(--text-muted)', padding: 4,
+              }}
+            >
+              <X size={16} />
+            </button>
+            <div style={{ display: 'flex', gap: 12 }}>
+              {selectedRestaurant.image_url && (
+                <img
+                  src={selectedRestaurant.image_url}
+                  alt={selectedRestaurant.name}
+                  style={{
+                    width: 60, height: 60, objectFit: 'cover',
+                    borderRadius: 10, border: '2px solid var(--border)',
+                  }}
+                />
+              )}
+              <div>
+                <h3 style={{ fontFamily: "'Righteous', cursive", fontSize: 16, color: 'var(--hot-pink)' }}>
+                  {selectedRestaurant.name}
+                </h3>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {selectedRestaurant.city}{selectedRestaurant.state ? `, ${selectedRestaurant.state}` : ''}
+                </p>
+                <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                  {selectedRestaurant.cuisine_tags?.slice(0, 3).map((t) => (
+                    <span key={t} className="chip" style={{ fontSize: 10, padding: '2px 8px' }}>{t}</span>
+                  ))}
                 </div>
               </div>
-            ))
-          )}
+            </div>
+            <p style={{ fontSize: 11, color: 'var(--electric-blue)', marginTop: 8, textAlign: 'center' }}>
+              Tap to view details →
+            </p>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
