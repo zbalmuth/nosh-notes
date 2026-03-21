@@ -51,7 +51,7 @@ export function AuthPage() {
         </div>
         <h1>Nosh Notes</h1>
         <p style={{ fontFamily: "'Righteous', cursive", color: 'var(--text-secondary)', fontSize: 15 }}>
-          Your groovy restaurant journal
+          Your restaurant journal
         </p>
 
         <form className="auth-form" onSubmit={handleSubmit}>
@@ -121,7 +121,7 @@ export function AuthPage() {
           color: 'var(--text-muted)',
           fontFamily: "'Righteous', cursive",
         }}>
-          ✌️ Far Out Dining Since 2026 ✌️
+          Nosh Notes 2026
         </div>
       </div>
     </div>
