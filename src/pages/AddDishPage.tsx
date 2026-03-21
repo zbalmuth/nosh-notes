@@ -116,7 +116,7 @@ export function AddDishPage() {
       <div className="page-header">
         <button
           onClick={() => navigate(-1)}
-          style={{ background: 'none', border: 'none', color: 'var(--burnt-orange)' }}
+          style={{ background: 'none', border: 'none', color: 'var(--hot-pink)' }}
         >
           <ArrowLeft size={22} />
         </button>
@@ -225,10 +225,10 @@ export function AddDishPage() {
               justifyContent: 'space-between',
               padding: '12px 16px',
               background: wantToTry
-                ? 'linear-gradient(135deg, var(--mustard), var(--gold))'
+                ? 'linear-gradient(135deg, var(--neon-pink), var(--cyan))'
                 : 'var(--bg-secondary)',
               borderRadius: 'var(--radius)',
-              border: `2px solid ${wantToTry ? 'var(--gold)' : 'var(--border)'}`,
+              border: `2px solid ${wantToTry ? 'var(--cyan)' : 'var(--border)'}`,
               cursor: 'pointer',
               transition: 'all 0.2s',
             }}
@@ -238,7 +238,7 @@ export function AddDishPage() {
               style={{
                 fontFamily: "'Righteous', cursive",
                 fontSize: 15,
-                color: wantToTry ? 'var(--cream)' : 'var(--text-secondary)',
+                color: wantToTry ? 'var(--white)' : 'var(--text-secondary)',
               }}
             >
               ✨ Want to Try
@@ -258,7 +258,7 @@ export function AddDishPage() {
                   width: 20,
                   height: 20,
                   borderRadius: 10,
-                  background: wantToTry ? 'var(--cream)' : 'var(--text-muted)',
+                  background: wantToTry ? 'var(--white)' : 'var(--text-muted)',
                   position: 'absolute',
                   top: 2,
                   left: wantToTry ? 22 : 2,

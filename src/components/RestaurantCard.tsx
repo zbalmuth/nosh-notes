@@ -54,14 +54,14 @@ export function RestaurantCard({ restaurant }: Props) {
                 toggleFavorite(restaurant.id, !restaurant.is_favorite);
               }}
             >
-              <Star size={18} fill={restaurant.is_favorite ? 'var(--mustard)' : 'none'} />
+              <Star size={18} fill={restaurant.is_favorite ? 'var(--neon-pink)' : 'none'} />
             </button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
             <MapPin size={12} />
             <span>{restaurant.city}{restaurant.state ? `, ${restaurant.state}` : ''}</span>
             {restaurant.price_level && (
-              <span style={{ marginLeft: 8, color: 'var(--avocado)', fontWeight: 600 }}>
+              <span style={{ marginLeft: 8, color: 'var(--palm-green)', fontWeight: 600 }}>
                 {restaurant.price_level}
               </span>
             )}
@@ -70,7 +70,7 @@ export function RestaurantCard({ restaurant }: Props) {
             <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
               {restaurant.cuisine_tags.slice(0, 3).map((tag) => (
                 <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                  <Tag size={10} color="var(--burnt-orange)" />
+                  <Tag size={10} color="var(--hot-pink)" />
                   <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{tag}</span>
                 </span>
               ))}

@@ -35,14 +35,14 @@ export function MapPage() {
       <div className="page-header">
         <button
           onClick={() => navigate(-1)}
-          style={{ background: 'none', border: 'none', color: 'var(--burnt-orange)' }}
+          style={{ background: 'none', border: 'none', color: 'var(--hot-pink)' }}
         >
           <ArrowLeft size={22} />
         </button>
         <h1 style={{ flex: 1 }}>Map</h1>
         <button
           onClick={() => setShowFilters(!showFilters)}
-          style={{ background: 'none', border: 'none', color: 'var(--burnt-orange)' }}
+          style={{ background: 'none', border: 'none', color: 'var(--hot-pink)' }}
         >
           <Filter size={20} />
         </button>
@@ -54,7 +54,7 @@ export function MapPage() {
           className={`chip ${favoritesOnly ? 'active' : ''}`}
           onClick={() => setFavoritesOnly(!favoritesOnly)}
         >
-          <Star size={12} fill={favoritesOnly ? 'var(--cream)' : 'none'} />
+          <Star size={12} fill={favoritesOnly ? 'var(--white)' : 'none'} />
           Favorites
         </button>
       </div>
@@ -105,7 +105,7 @@ export function MapPage() {
 
         {/* Restaurant pins list */}
         <div style={{ marginTop: 16 }}>
-          <h3 style={{ fontFamily: "'Righteous', cursive", fontSize: 16, color: 'var(--burnt-orange)', marginBottom: 8 }}>
+          <h3 style={{ fontFamily: "'Righteous', cursive", fontSize: 16, color: 'var(--hot-pink)', marginBottom: 8 }}>
             Restaurants on Map ({filtered.length})
           </h3>
           {filtered.length === 0 ? (
@@ -121,7 +121,7 @@ export function MapPage() {
                 onClick={() => navigate(`/restaurant/${r.id}`)}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <MapPin size={16} color="var(--burnt-orange)" />
+                  <MapPin size={16} color="var(--hot-pink)" />
                   <div>
                     <strong style={{ fontFamily: "'Righteous', cursive", fontSize: 14 }}>
                       {r.name}

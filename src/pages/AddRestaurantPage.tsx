@@ -29,6 +29,8 @@ export function AddRestaurantPage() {
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [newListName, setNewListName] = useState('');
+  const [showNewList, setShowNewList] = useState(false);
 
   // Auto-detect city
   useEffect(() => {
@@ -136,7 +138,7 @@ export function AddRestaurantPage() {
       <div className="page-header">
         <button
           onClick={() => navigate(-1)}
-          style={{ background: 'none', border: 'none', color: 'var(--burnt-orange)' }}
+          style={{ background: 'none', border: 'none', color: 'var(--hot-pink)' }}
         >
           <ArrowLeft size={22} />
         </button>
@@ -241,7 +243,7 @@ export function AddRestaurantPage() {
         {/* Lists */}
         <div className="form-group">
           <label>Add to Lists</label>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
             {lists.map((list) => (
               <button
                 key={list.id}
@@ -252,6 +254,49 @@ export function AddRestaurantPage() {
               </button>
             ))}
           </div>
+          {showNewList ? (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                className="input"
+                placeholder="New list name..."
+                value={newListName}
+                onChange={(e) => setNewListName(e.target.value)}
+                onKeyDown={async (e) => {
+                  if (e.key === 'Enter' && newListName.trim()) {
+                    const list = await addList(newListName.trim());
+                    setSelectedLists((prev) => [...prev, list.name]);
+                    setNewListName('');
+                    setShowNewList(false);
+                  }
+                }}
+                autoFocus
+                style={{ flex: 1 }}
+              />
+              <button
+                className="btn btn-primary"
+                style={{ padding: '8px 16px' }}
+                onClick={async () => {
+                  if (newListName.trim()) {
+                    const list = await addList(newListName.trim());
+                    setSelectedLists((prev) => [...prev, list.name]);
+                    setNewListName('');
+                    setShowNewList(false);
+                  }
+                }}
+              >
+                Add
+              </button>
+            </div>
+          ) : (
+            <button
+              className="btn btn-secondary"
+              style={{ fontSize: 13, padding: '8px 16px' }}
+              onClick={() => setShowNewList(true)}
+            >
+              <Plus size={14} />
+              New List
+            </button>
+          )}
         </div>
 
         {/* Cuisine Tags */}

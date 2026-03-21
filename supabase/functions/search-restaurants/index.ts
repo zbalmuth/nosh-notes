@@ -87,11 +87,11 @@ async function searchGoogle(query: string, location?: string) {
 
   const results = await Promise.all(
     (data.results || []).slice(0, 10).map(async (place: any) => {
-      // Get details for each place
+      // Get details with editorial_summary for better cuisine detection
       let details: any = {};
       try {
         const detailRes = await fetch(
-          `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_address,formatted_phone_number,website,url,photos,price_level,rating,types,geometry&key=${apiKey}`
+          `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_address,formatted_phone_number,website,url,photos,price_level,rating,types,geometry,editorial_summary,address_components&key=${apiKey}`
         );
         const detailData = await detailRes.json();
         details = detailData.result || {};
@@ -102,12 +102,25 @@ async function searchGoogle(query: string, location?: string) {
         ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoRef}&key=${apiKey}`
         : '';
 
-      // Extract city from address components or formatted address
-      const addressParts = (details.formatted_address || place.formatted_address || '').split(',');
-      const city = addressParts.length >= 2 ? addressParts[addressParts.length - 2]?.trim() : '';
+      // Extract city and state from address_components
+      let city = '';
+      let state = '';
+      if (details.address_components) {
+        for (const comp of details.address_components) {
+          if (comp.types?.includes('locality')) city = comp.long_name;
+          if (comp.types?.includes('administrative_area_level_1')) state = comp.short_name;
+        }
+      }
+      // Fallback: parse from formatted address
+      if (!city) {
+        const addressParts = (details.formatted_address || place.formatted_address || '').split(',');
+        city = addressParts.length >= 3 ? addressParts[addressParts.length - 3]?.trim() :
+               addressParts.length >= 2 ? addressParts[addressParts.length - 2]?.trim() : '';
+      }
 
-      // Map Google types to cuisine tags
+      // Map Google types to cuisine tags — both old and new API format
       const typeMap: Record<string, string> = {
+        // New Places API types (with underscores)
         chinese_restaurant: 'Chinese',
         italian_restaurant: 'Italian',
         japanese_restaurant: 'Japanese',
@@ -123,13 +136,54 @@ async function searchGoogle(query: string, location?: string) {
         steak_house: 'Steakhouse',
         sushi_restaurant: 'Sushi',
         barbecue_restaurant: 'BBQ',
+        // Common types from text search
         cafe: 'Cafe',
         bakery: 'Bakery',
+        bar: 'Bar',
+        meal_delivery: 'Delivery',
+        meal_takeaway: 'Takeout',
       };
 
-      const cuisineTags = (details.types || place.types || [])
-        .filter((t: string) => typeMap[t])
-        .map((t: string) => typeMap[t]);
+      const allTypes = [...(details.types || []), ...(place.types || [])];
+      const cuisineTags = [...new Set(
+        allTypes
+          .filter((t: string) => typeMap[t])
+          .map((t: string) => typeMap[t])
+      )];
+
+      // Also try to extract cuisine from the editorial summary or name
+      const summary = (details.editorial_summary?.overview || '').toLowerCase();
+      const nameAndSummary = `${place.name} ${summary}`.toLowerCase();
+
+      const cuisineKeywords: Record<string, string> = {
+        'italian': 'Italian', 'pizza': 'Pizza', 'pasta': 'Italian',
+        'chinese': 'Chinese', 'dim sum': 'Chinese',
+        'japanese': 'Japanese', 'sushi': 'Sushi', 'ramen': 'Japanese',
+        'mexican': 'Mexican', 'taco': 'Mexican', 'burrito': 'Mexican',
+        'indian': 'Indian', 'curry': 'Indian', 'tandoori': 'Indian',
+        'thai': 'Thai', 'pad thai': 'Thai',
+        'french': 'French', 'bistro': 'French',
+        'korean': 'Korean', 'bbq': 'BBQ', 'barbecue': 'BBQ',
+        'vietnamese': 'Vietnamese', 'pho': 'Vietnamese',
+        'mediterranean': 'Mediterranean', 'greek': 'Greek',
+        'seafood': 'Seafood', 'steakhouse': 'Steakhouse', 'steak': 'Steakhouse',
+        'burger': 'American', 'american': 'American',
+        'spanish': 'Spanish', 'tapas': 'Spanish',
+        'peruvian': 'Peruvian', 'brazilian': 'Brazilian',
+        'ethiopian': 'Ethiopian', 'middle eastern': 'Middle Eastern',
+        'turkish': 'Turkish', 'lebanese': 'Lebanese',
+        'cajun': 'Cajun', 'soul food': 'Soul Food',
+        'vegan': 'Vegan', 'vegetarian': 'Vegetarian',
+        'brunch': 'Brunch', 'breakfast': 'Breakfast',
+        'dessert': 'Dessert', 'bakery': 'Bakery',
+        'coffee': 'Coffee', 'cafe': 'Cafe',
+      };
+
+      for (const [keyword, tag] of Object.entries(cuisineKeywords)) {
+        if (nameAndSummary.includes(keyword) && !cuisineTags.includes(tag)) {
+          cuisineTags.push(tag);
+        }
+      }
 
       const priceMap: Record<number, string> = { 0: '$', 1: '$', 2: '$$', 3: '$$$', 4: '$$$$' };
 
@@ -138,7 +192,7 @@ async function searchGoogle(query: string, location?: string) {
         name: place.name,
         address: details.formatted_address || place.formatted_address || '',
         city,
-        state: '',
+        state,
         country: '',
         phone: details.formatted_phone_number || '',
         website: details.website || '',

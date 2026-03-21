@@ -108,7 +108,7 @@ export function RestaurantPage() {
           <div style={{
             width: '100%',
             height: '100%',
-            background: 'linear-gradient(135deg, var(--burnt-orange), var(--mustard), var(--avocado))',
+            background: 'linear-gradient(135deg, var(--hot-pink), var(--neon-pink), var(--palm-green))',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -121,7 +121,7 @@ export function RestaurantPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
               onClick={() => navigate(-1)}
-              style={{ background: 'none', border: 'none', color: 'var(--cream)', padding: 0 }}
+              style={{ background: 'none', border: 'none', color: 'var(--white)', padding: 0 }}
             >
               <ArrowLeft size={24} />
             </button>
@@ -129,9 +129,9 @@ export function RestaurantPage() {
             <button
               className={`favorite-btn ${restaurant.is_favorite ? 'active' : ''}`}
               onClick={() => toggleFavorite(restaurant.id, !restaurant.is_favorite)}
-              style={{ color: restaurant.is_favorite ? 'var(--mustard)' : 'var(--cream)' }}
+              style={{ color: restaurant.is_favorite ? 'var(--neon-pink)' : 'var(--white)' }}
             >
-              <Star size={24} fill={restaurant.is_favorite ? 'var(--mustard)' : 'none'} />
+              <Star size={24} fill={restaurant.is_favorite ? 'var(--neon-pink)' : 'none'} />
             </button>
           </div>
         </div>
@@ -148,7 +148,7 @@ export function RestaurantPage() {
         {restaurant.phone && (
           <div className="info-row">
             <Phone size={16} />
-            <a href={`tel:${restaurant.phone}`} style={{ color: 'var(--burnt-orange)' }}>
+            <a href={`tel:${restaurant.phone}`} style={{ color: 'var(--hot-pink)' }}>
               {restaurant.phone}
             </a>
           </div>
@@ -159,7 +159,7 @@ export function RestaurantPage() {
           {restaurant.price_level && (
             <span style={{
               fontFamily: "'Righteous', cursive",
-              color: 'var(--avocado)',
+              color: 'var(--palm-green)',
               fontSize: 16,
             }}>
               {restaurant.price_level}
@@ -211,7 +211,7 @@ export function RestaurantPage() {
         {/* Photos */}
         {restaurant.photos?.length > 0 && (
           <div style={{ marginTop: 16 }}>
-            <h3 style={{ fontSize: 14, color: 'var(--burnt-orange)', marginBottom: 8, fontFamily: "'Righteous', cursive" }}>
+            <h3 style={{ fontSize: 14, color: 'var(--hot-pink)', marginBottom: 8, fontFamily: "'Righteous', cursive" }}>
               Photos
             </h3>
             <div className="photo-grid">
@@ -226,7 +226,7 @@ export function RestaurantPage() {
 
         {/* Dishes Section */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h2 style={{ fontFamily: "'Righteous', cursive", fontSize: 20, color: 'var(--burnt-orange)' }}>
+          <h2 style={{ fontFamily: "'Righteous', cursive", fontSize: 20, color: 'var(--hot-pink)' }}>
             Dishes ({dishes.length})
           </h2>
         </div>

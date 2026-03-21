@@ -58,7 +58,7 @@ export function SearchRestaurantDialog({ open, onClose, onSelect }: Props) {
     <div className="dialog-overlay" onClick={onClose}>
       <div className="dialog-content" onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h2 style={{ fontFamily: "'Righteous', cursive", fontSize: 20, color: 'var(--burnt-orange)' }}>
+          <h2 style={{ fontFamily: "'Righteous', cursive", fontSize: 20, color: 'var(--hot-pink)' }}>
             Find Restaurant
           </h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)' }}>
@@ -102,7 +102,7 @@ export function SearchRestaurantDialog({ open, onClose, onSelect }: Props) {
         </div>
 
         {error && (
-          <p style={{ color: 'var(--rust)', fontSize: 13, marginBottom: 12, textAlign: 'center' }}>
+          <p style={{ color: 'var(--coral)', fontSize: 13, marginBottom: 12, textAlign: 'center' }}>
             {error}
           </p>
         )}

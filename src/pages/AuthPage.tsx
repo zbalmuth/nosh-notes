@@ -1,22 +1,41 @@
 import { useState } from 'react';
 import { signIn, signUp } from '../lib/api';
+import { supabase } from '../lib/supabase';
 
 export function AuthPage() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccessMsg('');
     setLoading(true);
     try {
-      const { error: authError } = isSignUp
-        ? await signUp(email, password)
-        : await signIn(email, password);
-      if (authError) setError(authError.message);
+      if (isSignUp) {
+        const { error: authError } = await signUp(email, password);
+        if (authError) {
+          setError(authError.message);
+        } else {
+          setSuccessMsg('Check your email to confirm your account!');
+          setIsSignUp(false);
+          setPassword('');
+        }
+      } else {
+        const { error: authError } = await signIn(email, password);
+        if (authError) {
+          setError(authError.message);
+        } else if (!rememberMe) {
+          window.addEventListener('beforeunload', () => {
+            supabase.auth.signOut();
+          }, { once: true });
+        }
+      }
     } catch {
       setError('Something went wrong');
     } finally {
@@ -53,8 +72,32 @@ export function AuthPage() {
             required
             minLength={6}
           />
+          {!isSignUp && (
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              padding: '4px 0',
+            }}>
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: 'var(--hot-pink)' }}
+              />
+              <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
+                Remember me for 90 days
+              </span>
+            </label>
+          )}
+          {successMsg && (
+            <p style={{ color: 'var(--palm-green)', fontSize: 13, background: '#56820312', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--palm-green)' }}>
+              {successMsg}
+            </p>
+          )}
           {error && (
-            <p style={{ color: 'var(--rust)', fontSize: 13 }}>{error}</p>
+            <p style={{ color: 'var(--coral)', fontSize: 13 }}>{error}</p>
           )}
           <button className="btn btn-primary" type="submit" disabled={loading} style={{ width: '100%' }}>
             {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}

@@ -83,13 +83,13 @@ export function HomePage() {
         <h1 style={{ flex: 1 }}>🍽️ Nosh Notes</h1>
         <button
           onClick={() => setShowSearch(!showSearch)}
-          style={{ background: 'none', border: 'none', color: 'var(--burnt-orange)' }}
+          style={{ background: 'none', border: 'none', color: 'var(--hot-pink)' }}
         >
           {showSearch ? <X size={22} /> : <Search size={22} />}
         </button>
         <button
           onClick={() => setShowListManager(!showListManager)}
-          style={{ background: 'none', border: 'none', color: 'var(--burnt-orange)' }}
+          style={{ background: 'none', border: 'none', color: 'var(--hot-pink)' }}
         >
           <List size={22} />
         </button>
@@ -124,7 +124,7 @@ export function HomePage() {
           className={`chip ${favoritesOnly ? 'active' : ''}`}
           onClick={() => setFavoritesOnly(!favoritesOnly)}
         >
-          <Star size={12} fill={favoritesOnly ? 'var(--cream)' : 'none'} />
+          <Star size={12} fill={favoritesOnly ? 'var(--white)' : 'none'} />
           Favorites
         </button>
         <button
@@ -214,7 +214,7 @@ export function HomePage() {
         <div className="dialog-overlay" onClick={() => setShowListManager(false)}>
           <div className="dialog-content" onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h2 style={{ fontFamily: "'Righteous', cursive", fontSize: 20, color: 'var(--burnt-orange)' }}>
+              <h2 style={{ fontFamily: "'Righteous', cursive", fontSize: 20, color: 'var(--hot-pink)' }}>
                 My Lists
               </h2>
               <button onClick={() => setShowListManager(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)' }}>
