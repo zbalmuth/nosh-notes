@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, Map, Settings } from 'lucide-react';
+import { Home, Map, Search, Settings } from 'lucide-react';
 
 export function BottomNav() {
   const location = useLocation();
@@ -22,6 +22,12 @@ export function BottomNav() {
       >
         <Map size={22} />
         <span>Map</span>
+      </button>
+      <button
+        onClick={() => navigate('/?search=true')}
+      >
+        <Search size={22} />
+        <span>Search</span>
       </button>
       <button
         className={isActive('/settings') ? 'active' : ''}

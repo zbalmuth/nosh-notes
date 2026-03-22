@@ -18,7 +18,8 @@ export function AddDishPage() {
   const { restaurantId } = useParams<{ restaurantId: string }>();
   const navigate = useNavigate();
   const { addDish, restaurants, showToast } = useApp();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const manualFileRef = useRef<HTMLInputElement>(null);
+  const scanFileRef = useRef<HTMLInputElement>(null);
 
   const restaurant = restaurants.find((r) => r.id === restaurantId);
 
@@ -216,12 +217,12 @@ export function AddDishPage() {
           {/* Photo */}
           <div className="form-group">
             <label>Photos</label>
-            <button className="camera-btn" onClick={() => fileInputRef.current?.click()}>
+            <button className="camera-btn" onClick={() => manualFileRef.current?.click()}>
               <Camera size={20} />
               Add Photo
             </button>
             <input
-              ref={fileInputRef}
+              ref={manualFileRef}
               type="file"
               accept="image/*"
               capture="environment"
@@ -336,6 +337,16 @@ export function AddDishPage() {
       {/* Scan Tab */}
       {activeTab === 'scan' && (
         <div style={{ padding: '16px 20px 100px' }}>
+          {/* Always-present hidden file input for scan */}
+          <input
+            ref={scanFileRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleScanCapture}
+            style={{ display: 'none' }}
+          />
+
           {/* No scan yet — show capture button */}
           {scannedDishes.length === 0 && !analyzing && (
             <div style={{ textAlign: 'center', padding: '30px 0' }}>
@@ -345,19 +356,11 @@ export function AddDishPage() {
               <button
                 className="camera-btn"
                 style={{ margin: '0 auto' }}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => scanFileRef.current?.click()}
               >
                 <Camera size={20} />
                 Take Photo or Upload
               </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleScanCapture}
-                style={{ display: 'none' }}
-              />
             </div>
           )}
 
@@ -459,7 +462,7 @@ export function AddDishPage() {
                   onClick={() => {
                     setScannedDishes([]);
                     setScanPhoto(null);
-                    fileInputRef.current?.click();
+                    setTimeout(() => scanFileRef.current?.click(), 100);
                   }}
                 >
                   Rescan
@@ -476,15 +479,6 @@ export function AddDishPage() {
                 </button>
               </div>
 
-              {/* Hidden file input for rescan */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleScanCapture}
-                style={{ display: 'none' }}
-              />
             </>
           )}
         </div>

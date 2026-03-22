@@ -74,6 +74,40 @@
   --rating-amazing: #00FF87;
 }
 
+/* Diner Theme — classic American retro */
+[data-theme="diner"] {
+  --hot-pink: #E63946;
+  --neon-pink: #FF6B6B;
+  --electric-blue: #48CAE4;
+  --cyan: #00B4D8;
+  --purple: #E63946;
+  --deep-purple: #A4133C;
+  --coral: #FF6B6B;
+  --sunset-orange: #FB8500;
+  --palm-green: #2A9D8F;
+  --dark-bg: #F1FAEE;
+  --navy: #FFFFFF;
+  --white: #1D3557;
+
+  --bg-primary: #F1FAEE;
+  --bg-secondary: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --text-primary: #1D3557;
+  --text-secondary: #457B9D;
+  --text-muted: #8EAABE;
+  --accent: #E63946;
+  --accent-hover: #FF6B6B;
+  --border: #D4E4ED;
+  --shadow: rgba(230, 57, 70, 0.15);
+
+  --rating-dislike: #E63946;
+  --rating-edible: #FF6B6B;
+  --rating-okay: #FB8500;
+  --rating-good: #48CAE4;
+  --rating-great: #2A9D8F;
+  --rating-amazing: #06D6A0;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -82,6 +116,7 @@
 }
 
 html, body, #root {
+  height: 100dvh;
   height: 100%;
   width: 100%;
   overflow: hidden;
@@ -222,11 +257,12 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  height: 64px;
+  min-height: 64px;
   background: var(--bg-card);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: content-box;
 }
 .bottom-nav a, .bottom-nav button {
   display: flex;
@@ -646,6 +682,9 @@ textarea.input {
 }
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+.spin {
+  animation: spin 1s linear infinite;
 }
 
 /* Restaurant detail header */

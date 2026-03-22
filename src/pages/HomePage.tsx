@@ -45,6 +45,7 @@ export function HomePage() {
     deleteList,
     updateRestaurant,
     deleteRestaurant,
+    getDishes,
     showToast,
     refreshRestaurants,
     refreshLists,
@@ -168,18 +169,41 @@ export function HomePage() {
     exitSelectionMode();
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
     if (selectedIds.size === 0) return;
     const selected = restaurants.filter((r) => selectedIds.has(r.id));
-    const text = selected.map((r) => {
-      let line = `${r.name}`;
-      if (r.city) line += ` — ${r.city}${r.state ? `, ${r.state}` : ''}`;
-      if (r.cuisine_tags?.length) line += ` (${r.cuisine_tags.join(', ')})`;
-      if (r.address) line += `\n  ${r.address}`;
-      if (r.phone) line += `\n  ${r.phone}`;
-      if (r.website) line += `\n  ${r.website}`;
-      return line;
-    }).join('\n\n');
+
+    const parts: string[] = [];
+    for (const r of selected) {
+      let section = `${r.name}`;
+      if (r.city) section += ` — ${r.city}${r.state ? `, ${r.state}` : ''}`;
+      if (r.cuisine_tags?.length) section += ` (${r.cuisine_tags.join(', ')})`;
+      if (r.address) section += `\n  ${r.address}`;
+      if (r.phone) section += `\n  ${r.phone}`;
+      if (r.website) section += `\n  ${r.website}`;
+
+      // Include dishes
+      try {
+        const dishes = await getDishes(r.id);
+        if (dishes.length > 0) {
+          section += '\n  Dishes:';
+          for (const d of dishes) {
+            let dishLine = `\n    • ${d.name}`;
+            if (d.want_to_try) {
+              dishLine += ' (Want to Try)';
+            } else if (d.rating !== null) {
+              dishLine += ` — ${d.rating.toFixed(1)}/10`;
+            }
+            if (d.notes) dishLine += ` — "${d.notes}"`;
+            section += dishLine;
+          }
+        }
+      } catch {}
+
+      parts.push(section);
+    }
+
+    const text = parts.join('\n\n');
 
     if (navigator.share) {
       navigator.share({ title: 'My Restaurants', text }).catch(() => {});
@@ -557,8 +581,9 @@ export function HomePage() {
           <div style={{
             position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
             background: 'var(--bg-card)', borderTop: '2px solid var(--hot-pink)',
-            borderRadius: '16px 16px 0 0', padding: '20px 20px 40px',
-            maxHeight: '50vh', overflowY: 'auto',
+            borderRadius: '16px 16px 0 0',
+            padding: '20px 20px calc(40px + env(safe-area-inset-bottom, 0px))',
+            maxHeight: '60vh', overflowY: 'auto',
           }}>
             <h3 style={{ fontFamily: "'Righteous', cursive", fontSize: 16, color: 'var(--hot-pink)', marginBottom: 12 }}>
               {moveAction === 'copy' ? 'Copy' : 'Move'} to List

@@ -6,25 +6,27 @@ import { supabase } from '../lib/supabase';
 
 const THEME_KEY = 'nosh-notes-theme';
 
-export function getTheme(): 'miami' | 'groovy' {
+type ThemeName = 'miami' | 'groovy' | 'diner';
+
+export function getTheme(): ThemeName {
   try {
-    return (localStorage.getItem(THEME_KEY) as 'miami' | 'groovy') || 'miami';
+    return (localStorage.getItem(THEME_KEY) as ThemeName) || 'miami';
   } catch {
     return 'miami';
   }
 }
 
-export function setTheme(theme: 'miami' | 'groovy') {
+export function setTheme(theme: ThemeName) {
   localStorage.setItem(THEME_KEY, theme);
   applyTheme(theme);
 }
 
-export function applyTheme(theme: 'miami' | 'groovy') {
+export function applyTheme(theme: ThemeName) {
   const root = document.documentElement;
-  if (theme === 'groovy') {
-    root.setAttribute('data-theme', 'groovy');
-  } else {
+  if (theme === 'miami') {
     root.removeAttribute('data-theme');
+  } else {
+    root.setAttribute('data-theme', theme);
   }
 }
 
@@ -32,14 +34,14 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const { restaurants, cities, updateRestaurant, showToast, refreshRestaurants } = useApp();
 
-  const [currentTheme, setCurrentTheme] = useState<'miami' | 'groovy'>(getTheme());
+  const [currentTheme, setCurrentTheme] = useState<ThemeName>(getTheme());
   const [showCityManager, setShowCityManager] = useState(false);
   const [mergeFrom, setMergeFrom] = useState<string[]>([]);
   const [mergeTo, setMergeTo] = useState('');
   const [newCityName, setNewCityName] = useState('');
   const [showAddCity, setShowAddCity] = useState(false);
 
-  const handleThemeChange = (theme: 'miami' | 'groovy') => {
+  const handleThemeChange = (theme: ThemeName) => {
     setCurrentTheme(theme);
     setTheme(theme);
   };
@@ -67,9 +69,19 @@ export function SettingsPage() {
   };
 
   const toggleMergeCity = (city: string) => {
-    setMergeFrom((prev) =>
-      prev.includes(city) ? prev.filter((c) => c !== city) : [...prev, city]
-    );
+    setMergeFrom((prev) => {
+      const next = prev.includes(city) ? prev.filter((c) => c !== city) : [...prev, city];
+      // Auto-fill mergeTo with the city that has the most restaurants
+      if (next.length > 0 && !mergeTo) {
+        const cityCounts = next.map((c) => ({
+          city: c,
+          count: restaurants.filter((r) => r.city === c).length,
+        }));
+        cityCounts.sort((a, b) => b.count - a.count);
+        setMergeTo(cityCounts[0].city);
+      }
+      return next;
+    });
   };
 
   return (
@@ -94,24 +106,24 @@ export function SettingsPage() {
             </h3>
           </div>
 
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {/* Miami Vice theme */}
             <button
               onClick={() => handleThemeChange('miami')}
               style={{
-                flex: 1, padding: 16, borderRadius: 'var(--radius)',
-                border: `2px solid ${currentTheme === 'miami' ? 'var(--hot-pink)' : 'var(--border)'}`,
+                flex: '1 1 calc(33% - 8px)', minWidth: 90, padding: 12, borderRadius: 'var(--radius)',
+                border: `2px solid ${currentTheme === 'miami' ? '#FF1493' : 'var(--border)'}`,
                 background: currentTheme === 'miami' ? 'rgba(255,20,147,0.1)' : 'var(--bg-card)',
                 cursor: 'pointer', textAlign: 'center',
               }}
             >
               <div style={{
-                width: '100%', height: 40, borderRadius: 8, marginBottom: 8,
+                width: '100%', height: 32, borderRadius: 6, marginBottom: 6,
                 background: 'linear-gradient(135deg, #FF1493, #00D4FF, #0F0F23)',
               }} />
               <span style={{
-                fontFamily: "'Righteous', cursive", fontSize: 13,
-                color: currentTheme === 'miami' ? 'var(--hot-pink)' : 'var(--text-secondary)',
+                fontFamily: "'Righteous', cursive", fontSize: 12,
+                color: currentTheme === 'miami' ? '#FF1493' : 'var(--text-secondary)',
               }}>
                 Miami Vice
               </span>
@@ -121,21 +133,43 @@ export function SettingsPage() {
             <button
               onClick={() => handleThemeChange('groovy')}
               style={{
-                flex: 1, padding: 16, borderRadius: 'var(--radius)',
+                flex: '1 1 calc(33% - 8px)', minWidth: 90, padding: 12, borderRadius: 'var(--radius)',
                 border: `2px solid ${currentTheme === 'groovy' ? '#FF6B35' : 'var(--border)'}`,
                 background: currentTheme === 'groovy' ? 'rgba(255,107,53,0.1)' : 'var(--bg-card)',
                 cursor: 'pointer', textAlign: 'center',
               }}
             >
               <div style={{
-                width: '100%', height: 40, borderRadius: 8, marginBottom: 8,
+                width: '100%', height: 32, borderRadius: 6, marginBottom: 6,
                 background: 'linear-gradient(135deg, #FF6B35, #FFD700, #FF1493, #7B2FF7)',
               }} />
               <span style={{
-                fontFamily: "'Righteous', cursive", fontSize: 13,
+                fontFamily: "'Righteous', cursive", fontSize: 12,
                 color: currentTheme === 'groovy' ? '#FF6B35' : 'var(--text-secondary)',
               }}>
                 Groovy
+              </span>
+            </button>
+
+            {/* Diner theme */}
+            <button
+              onClick={() => handleThemeChange('diner')}
+              style={{
+                flex: '1 1 calc(33% - 8px)', minWidth: 90, padding: 12, borderRadius: 'var(--radius)',
+                border: `2px solid ${currentTheme === 'diner' ? '#E63946' : 'var(--border)'}`,
+                background: currentTheme === 'diner' ? 'rgba(230,57,70,0.1)' : 'var(--bg-card)',
+                cursor: 'pointer', textAlign: 'center',
+              }}
+            >
+              <div style={{
+                width: '100%', height: 32, borderRadius: 6, marginBottom: 6,
+                background: 'linear-gradient(135deg, #E63946, #F1FAEE, #48CAE4, #1D3557)',
+              }} />
+              <span style={{
+                fontFamily: "'Righteous', cursive", fontSize: 12,
+                color: currentTheme === 'diner' ? '#E63946' : 'var(--text-secondary)',
+              }}>
+                Diner
               </span>
             </button>
           </div>
@@ -188,44 +222,66 @@ export function SettingsPage() {
             })}
           </div>
 
-          {/* Merge controls */}
+          {/* Merge controls — always visible when cities selected */}
           {mergeFrom.length > 0 && (
             <div style={{
-              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              background: 'var(--bg-card)', border: '2px solid var(--hot-pink)',
               borderRadius: 'var(--radius)', padding: 16, marginBottom: 12,
             }}>
               <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
                 Rename <strong style={{ color: 'var(--hot-pink)' }}>{mergeFrom.join(', ')}</strong> to:
               </p>
+              <input
+                className="input"
+                placeholder="Type target city name (e.g. Los Angeles)..."
+                value={mergeTo}
+                onChange={(e) => setMergeTo(e.target.value)}
+                autoFocus
+                style={{ fontSize: 14, padding: '10px 14px', marginBottom: 10, width: '100%' }}
+              />
               <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  className="input"
-                  placeholder="Target city name..."
-                  value={mergeTo}
-                  onChange={(e) => setMergeTo(e.target.value)}
-                  style={{ fontSize: 13, padding: '8px 12px' }}
-                />
                 <button
                   className="btn btn-primary"
-                  style={{ padding: '8px 16px', fontSize: 13, whiteSpace: 'nowrap' }}
+                  style={{
+                    flex: 1, padding: '10px 16px', fontSize: 14,
+                    opacity: mergeTo.trim() ? 1 : 0.4,
+                  }}
                   onClick={handleMergeCities}
                   disabled={!mergeTo.trim()}
                 >
-                  <Merge size={14} style={{ marginRight: 4 }} />
-                  Merge
+                  Merge {mergeFrom.length} {mergeFrom.length === 1 ? 'City' : 'Cities'}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ padding: '10px 16px', fontSize: 14 }}
+                  onClick={() => { setMergeFrom([]); setMergeTo(''); }}
+                >
+                  Cancel
                 </button>
               </div>
-              <button
-                onClick={() => { setMergeFrom([]); setMergeTo(''); }}
-                style={{
-                  background: 'none', border: 'none', color: 'var(--text-muted)',
-                  fontSize: 12, marginTop: 8, cursor: 'pointer',
-                }}
-              >
-                Clear selection
-              </button>
             </div>
           )}
+        </div>
+
+        {/* Fix menu links for existing restaurants */}
+        <div style={{ marginBottom: 24 }}>
+          <button
+            className="btn btn-secondary"
+            style={{ width: '100%', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+            onClick={async () => {
+              let fixed = 0;
+              for (const r of restaurants) {
+                if (r.google_url && !r.menu_url) {
+                  await updateRestaurant(r.id, { menu_url: `${r.google_url.replace(/\/$/, '')}/menu` });
+                  fixed++;
+                }
+              }
+              await refreshRestaurants();
+              showToast(fixed > 0 ? `Fixed menu links for ${fixed} restaurants` : 'All restaurants already have menu links');
+            }}
+          >
+            Fix Menu Links for Existing Restaurants
+          </button>
         </div>
 
         {/* Sign out */}
