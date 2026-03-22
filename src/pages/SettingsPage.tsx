@@ -235,8 +235,32 @@ export function SettingsPage() {
               borderRadius: 'var(--radius)', padding: 16, marginBottom: 12,
             }}>
               <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                Rename <strong style={{ color: 'var(--hot-pink)' }}>{mergeFrom.join(', ')}</strong> to:
+                Rename to:
               </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                {mergeFrom.map((city) => (
+                  <span
+                    key={city}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: '4px 10px', borderRadius: 20, fontSize: 13, fontWeight: 500,
+                      background: 'rgba(255,20,147,0.15)', color: 'var(--hot-pink)',
+                      border: '1px solid var(--hot-pink)',
+                    }}
+                  >
+                    {city}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setMergeFrom(prev => prev.filter(c => c !== city)); }}
+                      style={{
+                        background: 'none', border: 'none', color: 'var(--hot-pink)',
+                        padding: 0, marginLeft: 2, cursor: 'pointer', display: 'flex',
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </span>
+                ))}
+              </div>
               <input
                 className="input"
                 placeholder="Type target city name (e.g. Los Angeles)..."
