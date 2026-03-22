@@ -5,19 +5,42 @@ import type { Restaurant } from '../types';
 
 interface Props {
   restaurant: Restaurant;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-export function RestaurantCard({ restaurant }: Props) {
+export function RestaurantCard({ restaurant, selectionMode, selected, onToggleSelect }: Props) {
   const navigate = useNavigate();
   const { toggleFavorite } = useApp();
 
   return (
     <div
       className="card"
-      style={{ marginBottom: 12, cursor: 'pointer', position: 'relative' }}
-      onClick={() => navigate(`/restaurant/${restaurant.id}`)}
+      style={{
+        marginBottom: 12, cursor: 'pointer', position: 'relative',
+        border: selected ? '2px solid var(--hot-pink)' : undefined,
+      }}
+      onClick={() => {
+        if (selectionMode && onToggleSelect) {
+          onToggleSelect();
+        } else {
+          navigate(`/restaurant/${restaurant.id}`);
+        }
+      }}
     >
       <div style={{ display: 'flex', gap: 12 }}>
+        {selectionMode && (
+          <div style={{
+            width: 24, height: 24, borderRadius: 6,
+            border: `2px solid ${selected ? 'var(--hot-pink)' : 'var(--border)'}`,
+            background: selected ? 'var(--hot-pink)' : 'transparent',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0, alignSelf: 'center',
+          }}>
+            {selected && <span style={{ color: 'white', fontSize: 14, fontWeight: 700 }}>✓</span>}
+          </div>
+        )}
         {restaurant.image_url && (
           <img
             src={restaurant.image_url}

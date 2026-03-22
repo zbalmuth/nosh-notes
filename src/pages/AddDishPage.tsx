@@ -1,20 +1,31 @@
 import { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Camera, Loader } from 'lucide-react';
+import { ArrowLeft, Camera, Loader, X, Check, Sparkles } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { RatingSlider } from '../components/RatingSlider';
 import { analyzeDishImage, uploadPhoto } from '../lib/api';
 import { DISH_TYPES } from '../types';
 import type { DishType } from '../types';
 
+interface ScannedDish {
+  name: string;
+  dish_type: string;
+  action: 'rate' | 'want_to_try' | 'ignore';
+  rating: number;
+}
+
 export function AddDishPage() {
   const { restaurantId } = useParams<{ restaurantId: string }>();
   const navigate = useNavigate();
-  const { addDish, restaurants } = useApp();
+  const { addDish, restaurants, showToast } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const restaurant = restaurants.find((r) => r.id === restaurantId);
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'manual' | 'scan'>('manual');
+
+  // Manual entry state
   const [name, setName] = useState('');
   const [dishType, setDishType] = useState<DishType>('entree');
   const [wantToTry, setWantToTry] = useState(false);
@@ -22,14 +33,17 @@ export function AddDishPage() {
   const [notes, setNotes] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState<{ name: string; dish_type: string }[]>([]);
 
-  const handleImageCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Scan state
+  const [analyzing, setAnalyzing] = useState(false);
+  const [scannedDishes, setScannedDishes] = useState<ScannedDish[]>([]);
+  const [scanPhoto, setScanPhoto] = useState<string | null>(null);
+  const [savingScanned, setSavingScanned] = useState(false);
+
+  // Manual photo capture
+  const handleManualPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Show preview
     const reader = new FileReader();
     reader.onload = (ev) => {
       if (ev.target?.result) {
@@ -37,6 +51,19 @@ export function AddDishPage() {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  // Scan photo and analyze with AI
+  const handleScanCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Show preview
+    const previewReader = new FileReader();
+    previewReader.onload = (ev) => {
+      if (ev.target?.result) setScanPhoto(ev.target.result as string);
+    };
+    previewReader.readAsDataURL(file);
 
     // Analyze with AI
     setAnalyzing(true);
@@ -48,10 +75,19 @@ export function AddDishPage() {
           try {
             const result = await analyzeDishImage(base64);
             if (result.dishes?.length > 0) {
-              setAiSuggestions(result.dishes);
+              setScannedDishes(
+                result.dishes.map((d: { name: string; dish_type: string }) => ({
+                  name: d.name,
+                  dish_type: d.dish_type || 'entree',
+                  action: 'ignore' as const,
+                  rating: 7,
+                }))
+              );
+            } else {
+              showToast('No dishes detected. Try a clearer photo.');
             }
-          } catch (err) {
-            console.error('AI analysis failed:', err);
+          } catch {
+            showToast('AI analysis failed. Try again.');
           } finally {
             setAnalyzing(false);
           }
@@ -63,20 +99,16 @@ export function AddDishPage() {
     }
   };
 
-  const applySuggestion = (suggestion: { name: string; dish_type: string }) => {
-    setName(suggestion.name);
-    const matchedType = DISH_TYPES.find(
-      (t) => t.value === suggestion.dish_type.toLowerCase()
+  const updateScannedDish = (index: number, updates: Partial<ScannedDish>) => {
+    setScannedDishes((prev) =>
+      prev.map((d, i) => (i === index ? { ...d, ...updates } : d))
     );
-    if (matchedType) setDishType(matchedType.value);
-    setAiSuggestions([]);
   };
 
-  const handleSave = async () => {
+  const handleSaveManual = async () => {
     if (!name.trim() || !restaurantId) return;
     setSaving(true);
     try {
-      // Upload photos to Supabase storage if they're base64
       const uploadedPhotos: string[] = [];
       for (const photo of photos) {
         if (photo.startsWith('data:')) {
@@ -86,7 +118,6 @@ export function AddDishPage() {
             const url = await uploadPhoto(file, 'dish-photos', `${restaurantId}/${file.name}`);
             uploadedPhotos.push(url);
           } catch {
-            // Keep base64 as fallback
             uploadedPhotos.push(photo);
           }
         } else {
@@ -103,11 +134,42 @@ export function AddDishPage() {
         notes,
         photos: uploadedPhotos,
       });
+      showToast('Dish added!');
       navigate(`/restaurant/${restaurantId}`);
     } catch (err) {
       console.error('Failed to add dish', err);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveScanned = async () => {
+    if (!restaurantId) return;
+    const toSave = scannedDishes.filter((d) => d.action !== 'ignore');
+    if (toSave.length === 0) {
+      showToast('Select at least one dish to add.');
+      return;
+    }
+
+    setSavingScanned(true);
+    try {
+      for (const dish of toSave) {
+        await addDish({
+          restaurant_id: restaurantId,
+          name: dish.name,
+          dish_type: dish.dish_type as DishType,
+          want_to_try: dish.action === 'want_to_try',
+          rating: dish.action === 'want_to_try' ? null : dish.rating,
+          notes: '',
+          photos: [],
+        });
+      }
+      showToast(`${toSave.length} dish${toSave.length > 1 ? 'es' : ''} added!`);
+      navigate(`/restaurant/${restaurantId}`);
+    } catch (err) {
+      console.error('Failed to save scanned dishes', err);
+    } finally {
+      setSavingScanned(false);
     }
   };
 
@@ -129,176 +191,304 @@ export function AddDishPage() {
         </div>
       )}
 
-      <div style={{ padding: '16px 20px 100px' }}>
-        {/* Camera / AI */}
-        <div className="form-group">
-          <label>Scan Menu / Receipt / Dish Photo</label>
-          <button className="camera-btn" onClick={() => fileInputRef.current?.click()}>
-            {analyzing ? (
-              <>
-                <Loader size={20} className="spin" />
-                Analyzing with AI...
-              </>
-            ) : (
-              <>
-                <Camera size={20} />
-                Take Photo or Upload Image
-              </>
-            )}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleImageCapture}
-            style={{ display: 'none' }}
-          />
-        </div>
+      {/* Tabs */}
+      <div className="provider-toggle" style={{ margin: '0 20px 4px' }}>
+        <button
+          className={activeTab === 'manual' ? 'active' : ''}
+          onClick={() => setActiveTab('manual')}
+          style={{ flex: 1 }}
+        >
+          Manual Entry
+        </button>
+        <button
+          className={activeTab === 'scan' ? 'active' : ''}
+          onClick={() => setActiveTab('scan')}
+          style={{ flex: 1 }}
+        >
+          <Camera size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
+          Scan
+        </button>
+      </div>
 
-        {/* AI Suggestions */}
-        {aiSuggestions.length > 0 && (
+      {/* Manual Entry Tab */}
+      {activeTab === 'manual' && (
+        <div style={{ padding: '16px 20px 100px' }}>
+          {/* Photo */}
           <div className="form-group">
-            <label>AI Detected Dishes</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {aiSuggestions.map((s, i) => (
+            <label>Photos</label>
+            <button className="camera-btn" onClick={() => fileInputRef.current?.click()}>
+              <Camera size={20} />
+              Add Photo
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleManualPhoto}
+              style={{ display: 'none' }}
+            />
+          </div>
+
+          {photos.length > 0 && (
+            <div className="form-group">
+              <div className="photo-grid">
+                {photos.map((p, i) => (
+                  <div key={i} style={{ position: 'relative' }}>
+                    <img src={p} alt={`Photo ${i + 1}`} />
+                    <button
+                      onClick={() => setPhotos((prev) => prev.filter((_, idx) => idx !== i))}
+                      style={{
+                        position: 'absolute', top: 4, right: 4,
+                        background: 'rgba(0,0,0,0.6)', border: 'none',
+                        borderRadius: '50%', width: 22, height: 22,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: 'white', cursor: 'pointer',
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Dish Name */}
+          <div className="form-group">
+            <label>Dish Name *</label>
+            <input
+              className="input"
+              placeholder="What did you have?"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+
+          {/* Dish Type */}
+          <div className="form-group">
+            <label>Dish Type</label>
+            <div className="dish-type-pills">
+              {DISH_TYPES.map((type) => (
                 <button
-                  key={i}
-                  className="card"
-                  style={{ textAlign: 'left', cursor: 'pointer', padding: 12 }}
-                  onClick={() => applySuggestion(s)}
+                  key={type.value}
+                  className={`dish-type-pill ${dishType === type.value ? 'active' : ''}`}
+                  onClick={() => setDishType(type.value)}
                 >
-                  <strong style={{ fontFamily: "'Righteous', cursive" }}>{s.name}</strong>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>
-                    ({s.dish_type})
-                  </span>
+                  {type.label}
                 </button>
               ))}
             </div>
           </div>
-        )}
 
-        {/* Photo previews */}
-        {photos.length > 0 && (
+          {/* Want to Try */}
           <div className="form-group">
-            <div className="photo-grid">
-              {photos.map((p, i) => (
-                <img key={i} src={p} alt={`Photo ${i + 1}`} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Dish Name */}
-        <div className="form-group">
-          <label>Dish Name *</label>
-          <input
-            className="input"
-            placeholder="What did you have?"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-
-        {/* Dish Type */}
-        <div className="form-group">
-          <label>Dish Type</label>
-          <div className="dish-type-pills">
-            {DISH_TYPES.map((type) => (
-              <button
-                key={type.value}
-                className={`dish-type-pill ${dishType === type.value ? 'active' : ''}`}
-                onClick={() => setDishType(type.value)}
-              >
-                {type.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Want to Try toggle */}
-        <div className="form-group">
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '12px 16px',
-              background: wantToTry
-                ? 'linear-gradient(135deg, var(--neon-pink), var(--cyan))'
-                : 'var(--bg-secondary)',
-              borderRadius: 'var(--radius)',
-              border: `2px solid ${wantToTry ? 'var(--cyan)' : 'var(--border)'}`,
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-            onClick={() => setWantToTry(!wantToTry)}
-          >
-            <span
-              style={{
-                fontFamily: "'Righteous', cursive",
-                fontSize: 15,
-                color: wantToTry ? 'var(--white)' : 'var(--text-secondary)',
-              }}
-            >
-              ✨ Want to Try
-            </span>
             <div
               style={{
-                width: 44,
-                height: 24,
-                borderRadius: 12,
-                background: wantToTry ? 'rgba(255,255,255,0.3)' : 'var(--border)',
-                position: 'relative',
-                transition: 'background 0.2s',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 16px',
+                background: wantToTry ? 'linear-gradient(135deg, var(--neon-pink), var(--cyan))' : 'var(--bg-secondary)',
+                borderRadius: 'var(--radius)', border: `2px solid ${wantToTry ? 'var(--cyan)' : 'var(--border)'}`,
+                cursor: 'pointer', transition: 'all 0.2s',
               }}
+              onClick={() => setWantToTry(!wantToTry)}
             >
-              <div
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: 10,
-                  background: wantToTry ? 'var(--white)' : 'var(--text-muted)',
-                  position: 'absolute',
-                  top: 2,
-                  left: wantToTry ? 22 : 2,
-                  transition: 'left 0.2s',
-                }}
-              />
+              <span style={{ fontFamily: "'Righteous', cursive", fontSize: 15, color: wantToTry ? 'var(--white)' : 'var(--text-secondary)' }}>
+                ✨ Want to Try
+              </span>
+              <div style={{ width: 44, height: 24, borderRadius: 12, background: wantToTry ? 'rgba(255,255,255,0.3)' : 'var(--border)', position: 'relative', transition: 'background 0.2s' }}>
+                <div style={{ width: 20, height: 20, borderRadius: 10, background: wantToTry ? 'var(--white)' : 'var(--text-muted)', position: 'absolute', top: 2, left: wantToTry ? 22 : 2, transition: 'left 0.2s' }} />
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Rating */}
-        {!wantToTry && (
+          {/* Rating */}
+          {!wantToTry && (
+            <div className="form-group">
+              <label>Rating</label>
+              <RatingSlider value={rating} onChange={setRating} />
+            </div>
+          )}
+
+          {/* Notes */}
           <div className="form-group">
-            <label>Rating</label>
-            <RatingSlider value={rating} onChange={setRating} />
+            <label>Notes (optional)</label>
+            <textarea
+              className="input"
+              placeholder="How was it? Any special thoughts?"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+            />
           </div>
-        )}
 
-        {/* Notes */}
-        <div className="form-group">
-          <label>Notes (optional)</label>
-          <textarea
-            className="input"
-            placeholder="How was it? Any special thoughts?"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={3}
-          />
+          <button
+            className="btn btn-primary"
+            style={{ width: '100%', marginTop: 8 }}
+            onClick={handleSaveManual}
+            disabled={!name.trim() || saving}
+          >
+            {saving ? 'Saving...' : 'Add Dish'}
+          </button>
         </div>
+      )}
 
-        {/* Save */}
-        <button
-          className="btn btn-primary"
-          style={{ width: '100%', marginTop: 8 }}
-          onClick={handleSave}
-          disabled={!name.trim() || saving}
-        >
-          {saving ? 'Saving...' : 'Add Dish'}
-        </button>
-      </div>
+      {/* Scan Tab */}
+      {activeTab === 'scan' && (
+        <div style={{ padding: '16px 20px 100px' }}>
+          {/* No scan yet — show capture button */}
+          {scannedDishes.length === 0 && !analyzing && (
+            <div style={{ textAlign: 'center', padding: '30px 0' }}>
+              <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 14 }}>
+                Take a photo of a menu, receipt, or dish to auto-detect items
+              </p>
+              <button
+                className="camera-btn"
+                style={{ margin: '0 auto' }}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Camera size={20} />
+                Take Photo or Upload
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleScanCapture}
+                style={{ display: 'none' }}
+              />
+            </div>
+          )}
+
+          {/* Analyzing spinner */}
+          {analyzing && (
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <Loader size={32} className="spin" style={{ color: 'var(--hot-pink)', marginBottom: 12 }} />
+              <p style={{ color: 'var(--text-secondary)', fontFamily: "'Righteous', cursive" }}>
+                Analyzing with AI...
+              </p>
+            </div>
+          )}
+
+          {/* Scan preview */}
+          {scanPhoto && !analyzing && (
+            <div className="form-group">
+              <div style={{ position: 'relative', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: 12 }}>
+                <img src={scanPhoto} alt="Scan" style={{ width: '100%', maxHeight: 200, objectFit: 'cover' }} />
+              </div>
+            </div>
+          )}
+
+          {/* Scanned dishes list */}
+          {scannedDishes.length > 0 && !analyzing && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                <Sparkles size={16} style={{ color: 'var(--hot-pink)' }} />
+                <h3 style={{ fontFamily: "'Righteous', cursive", fontSize: 16, color: 'var(--hot-pink)' }}>
+                  Detected Dishes ({scannedDishes.length})
+                </h3>
+              </div>
+
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+                Tap an action for each dish: rate it, mark as want to try, or ignore.
+              </p>
+
+              {scannedDishes.map((dish, i) => (
+                <div
+                  key={i}
+                  className="card"
+                  style={{
+                    padding: 14, marginBottom: 10,
+                    border: dish.action !== 'ignore' ? '2px solid var(--hot-pink)' : '2px solid var(--border)',
+                    opacity: dish.action === 'ignore' ? 0.5 : 1,
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {/* Dish name — editable */}
+                  <input
+                    className="input"
+                    value={dish.name}
+                    onChange={(e) => updateScannedDish(i, { name: e.target.value })}
+                    style={{ fontFamily: "'Righteous', cursive", fontSize: 15, marginBottom: 8, padding: '6px 10px' }}
+                  />
+
+                  {/* Action buttons */}
+                  <div style={{ display: 'flex', gap: 6, marginBottom: dish.action === 'rate' ? 10 : 0 }}>
+                    <button
+                      className={`chip ${dish.action === 'rate' ? 'active' : ''}`}
+                      onClick={() => updateScannedDish(i, { action: dish.action === 'rate' ? 'ignore' : 'rate' })}
+                      style={{ flex: 1, justifyContent: 'center' }}
+                    >
+                      <Check size={12} />
+                      Rate
+                    </button>
+                    <button
+                      className={`chip ${dish.action === 'want_to_try' ? 'active' : ''}`}
+                      onClick={() => updateScannedDish(i, { action: dish.action === 'want_to_try' ? 'ignore' : 'want_to_try' })}
+                      style={{ flex: 1, justifyContent: 'center' }}
+                    >
+                      <Sparkles size={12} />
+                      Want to Try
+                    </button>
+                    <button
+                      className={`chip ${dish.action === 'ignore' ? '' : ''}`}
+                      onClick={() => updateScannedDish(i, { action: 'ignore' })}
+                      style={{ flex: 1, justifyContent: 'center', opacity: dish.action === 'ignore' ? 1 : 0.5 }}
+                    >
+                      <X size={12} />
+                      Skip
+                    </button>
+                  </div>
+
+                  {/* Rating slider if action is 'rate' */}
+                  {dish.action === 'rate' && (
+                    <RatingSlider
+                      value={dish.rating}
+                      onChange={(val) => updateScannedDish(i, { rating: val })}
+                    />
+                  )}
+                </div>
+              ))}
+
+              {/* Save / Rescan buttons */}
+              <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                <button
+                  className="btn btn-secondary"
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    setScannedDishes([]);
+                    setScanPhoto(null);
+                    fileInputRef.current?.click();
+                  }}
+                >
+                  Rescan
+                </button>
+                <button
+                  className="btn btn-primary"
+                  style={{ flex: 2 }}
+                  onClick={handleSaveScanned}
+                  disabled={savingScanned || scannedDishes.every((d) => d.action === 'ignore')}
+                >
+                  {savingScanned
+                    ? 'Saving...'
+                    : `Add ${scannedDishes.filter((d) => d.action !== 'ignore').length} Dish${scannedDishes.filter((d) => d.action !== 'ignore').length !== 1 ? 'es' : ''}`}
+                </button>
+              </div>
+
+              {/* Hidden file input for rescan */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleScanCapture}
+                style={{ display: 'none' }}
+              />
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

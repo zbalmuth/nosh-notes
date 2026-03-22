@@ -17,6 +17,14 @@ const markerIcon = new L.Icon({
   shadowSize: [41, 41],
 });
 
+// User location marker — blue pulsing dot
+const userLocationIcon = L.divIcon({
+  className: 'user-location-marker',
+  html: '<div class="user-dot"></div>',
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
+});
+
 export function MapPage() {
   const navigate = useNavigate();
   const { restaurants, lists, cuisineTags, cities } = useApp();
@@ -31,6 +39,7 @@ export function MapPage() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
+  const userMarkerRef = useRef<L.Marker | null>(null);
 
   const filtered = useMemo(() => {
     let result = restaurants.filter((r) => r.latitude && r.longitude);
@@ -62,6 +71,28 @@ export function MapPage() {
       mapRef.current = null;
       markersRef.current = null;
     };
+  }, []);
+
+  // Get user location
+  useEffect(() => {
+    if (!mapRef.current || !navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        if (mapRef.current) {
+          if (userMarkerRef.current) {
+            userMarkerRef.current.setLatLng([latitude, longitude]);
+          } else {
+            userMarkerRef.current = L.marker([latitude, longitude], { icon: userLocationIcon })
+              .bindPopup('You are here')
+              .addTo(mapRef.current);
+          }
+        }
+      },
+      (err) => console.warn('Geolocation failed:', err.message),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   }, []);
 
   // Update markers when filtered restaurants change

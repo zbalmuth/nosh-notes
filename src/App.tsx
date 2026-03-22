@@ -9,8 +9,13 @@ import { AddRestaurantPage } from './pages/AddRestaurantPage';
 import { AddDishPage } from './pages/AddDishPage';
 import { EditDishPage } from './pages/EditDishPage';
 import { MapPage } from './pages/MapPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { BottomNav } from './components/BottomNav';
 import { AppProvider } from './hooks/useAppContext';
+import { applyTheme, getTheme } from './pages/SettingsPage';
+
+// Apply saved theme on load
+applyTheme(getTheme());
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -55,6 +60,7 @@ function App() {
               <Route path="/restaurant/:restaurantId/add-dish" element={<AddDishPage />} />
               <Route path="/restaurant/:restaurantId/dish/:dishId/edit" element={<EditDishPage />} />
               <Route path="/map" element={<MapPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>

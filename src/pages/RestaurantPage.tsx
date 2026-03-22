@@ -14,6 +14,8 @@ import {
   Tag,
   Info,
   BookOpen,
+  CheckSquare,
+  Share2,
 } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { DishCard } from '../components/DishCard';
@@ -38,6 +40,7 @@ export function RestaurantPage() {
     deleteDish,
     deleteRestaurant,
     toggleFavorite,
+    showToast,
   } = useApp();
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
@@ -45,6 +48,8 @@ export function RestaurantPage() {
   const [loading, setLoading] = useState(true);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [infoExpanded, setInfoExpanded] = useState(false);
+  const [dishSelectionMode, setDishSelectionMode] = useState(false);
+  const [selectedDishIds, setSelectedDishIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const r = restaurants.find((r) => r.id === id);
@@ -94,6 +99,51 @@ export function RestaurantPage() {
   const handleDeleteDish = async (dishId: string) => {
     await deleteDish(dishId);
     setDishes((prev) => prev.filter((d) => d.id !== dishId));
+  };
+
+  const toggleDishSelect = (dishId: string) => {
+    setSelectedDishIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(dishId)) next.delete(dishId);
+      else next.add(dishId);
+      return next;
+    });
+  };
+
+  const exitDishSelectionMode = () => {
+    setDishSelectionMode(false);
+    setSelectedDishIds(new Set());
+  };
+
+  const handleBulkDeleteDishes = async () => {
+    if (selectedDishIds.size === 0) return;
+    if (!confirm(`Delete ${selectedDishIds.size} dish${selectedDishIds.size > 1 ? 'es' : ''}?`)) return;
+    for (const dishId of selectedDishIds) {
+      await deleteDish(dishId);
+    }
+    setDishes((prev) => prev.filter((d) => !selectedDishIds.has(d.id)));
+    showToast(`${selectedDishIds.size} dish${selectedDishIds.size > 1 ? 'es' : ''} deleted`);
+    exitDishSelectionMode();
+  };
+
+  const handleShareDishes = () => {
+    if (selectedDishIds.size === 0) return;
+    const selected = dishes.filter((d) => selectedDishIds.has(d.id));
+    const text = `Dishes at ${restaurant?.name || 'Restaurant'}:\n\n` + selected.map((d) => {
+      let line = `• ${d.name}`;
+      if (d.want_to_try) line += ' (Want to Try)';
+      else if (d.rating !== null) line += ` — ${d.rating.toFixed(1)}/10`;
+      if (d.notes) line += ` — ${d.notes}`;
+      return line;
+    }).join('\n');
+
+    if (navigator.share) {
+      navigator.share({ title: `Dishes at ${restaurant?.name}`, text }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(text);
+      showToast('Copied to clipboard!');
+    }
+    exitDishSelectionMode();
   };
 
   if (!restaurant) {
@@ -260,7 +310,53 @@ export function RestaurantPage() {
           <h2 style={{ fontFamily: "'Righteous', cursive", fontSize: 20, color: 'var(--hot-pink)' }}>
             Dishes ({dishes.length})
           </h2>
+          {dishes.length > 0 && (
+            <button
+              onClick={() => {
+                if (dishSelectionMode) exitDishSelectionMode();
+                else setDishSelectionMode(true);
+              }}
+              style={{ background: 'none', border: 'none', color: dishSelectionMode ? 'var(--electric-blue)' : 'var(--text-muted)', padding: 4 }}
+            >
+              <CheckSquare size={18} />
+            </button>
+          )}
         </div>
+
+        {/* Dish selection action bar */}
+        {dishSelectionMode && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)', marginBottom: 12,
+          }}>
+            <button
+              className="chip"
+              onClick={() => setSelectedDishIds(new Set(dishes.map((d) => d.id)))}
+              style={{ fontSize: 12 }}
+            >
+              Select All
+            </button>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              {selectedDishIds.size} selected
+            </span>
+            <div style={{ flex: 1 }} />
+            <button
+              onClick={handleShareDishes}
+              disabled={selectedDishIds.size === 0}
+              style={{ background: 'none', border: 'none', color: selectedDishIds.size > 0 ? 'var(--palm-green)' : 'var(--text-muted)', padding: 6 }}
+            >
+              <Share2 size={18} />
+            </button>
+            <button
+              onClick={handleBulkDeleteDishes}
+              disabled={selectedDishIds.size === 0}
+              style={{ background: 'none', border: 'none', color: selectedDishIds.size > 0 ? '#FF1744' : 'var(--text-muted)', padding: 6 }}
+            >
+              <Trash2 size={18} />
+            </button>
+          </div>
+        )}
 
         {loading ? (
           <div className="loading-spinner" />
@@ -290,8 +386,11 @@ export function RestaurantPage() {
                   <DishCard
                     key={dish.id}
                     dish={dish}
-                    onDelete={() => handleDeleteDish(dish.id)}
-                    onEdit={() => navigate(`/restaurant/${id}/dish/${dish.id}/edit`)}
+                    onDelete={dishSelectionMode ? undefined : () => handleDeleteDish(dish.id)}
+                    onEdit={dishSelectionMode ? undefined : () => navigate(`/restaurant/${id}/dish/${dish.id}/edit`)}
+                    selectionMode={dishSelectionMode}
+                    selected={selectedDishIds.has(dish.id)}
+                    onToggleSelect={() => toggleDishSelect(dish.id)}
                   />
                 ))}
             </div>

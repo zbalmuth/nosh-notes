@@ -7,9 +7,12 @@ interface Props {
   dish: Dish;
   onDelete?: () => void;
   onEdit?: () => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-export function DishCard({ dish, onDelete, onEdit }: Props) {
+export function DishCard({ dish, onDelete, onEdit, selectionMode, selected, onToggleSelect }: Props) {
   const hasRating = dish.rating !== null && !dish.want_to_try;
   const cardRef = useRef<HTMLDivElement>(null);
   const [swipeX, setSwipeX] = useState(0);
@@ -68,7 +71,7 @@ export function DishCard({ dish, onDelete, onEdit }: Props) {
   };
 
   return (
-    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius)', marginBottom: 10 }}>
+    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius)', marginBottom: 10, border: selected ? '2px solid var(--hot-pink)' : undefined }}>
       {/* Delete behind the card */}
       <div
         style={{
@@ -101,12 +104,29 @@ export function DishCard({ dish, onDelete, onEdit }: Props) {
           position: 'relative',
           zIndex: 1,
         }}
-        onClick={() => { if (swipeX === 0 && onEdit) onEdit(); }}
-        onTouchStart={onDelete ? handleTouchStart : undefined}
-        onTouchMove={onDelete ? handleTouchMove : undefined}
-        onTouchEnd={onDelete ? handleTouchEnd : undefined}
+        onClick={() => {
+          if (selectionMode && onToggleSelect) {
+            onToggleSelect();
+          } else if (swipeX === 0 && onEdit) {
+            onEdit();
+          }
+        }}
+        onTouchStart={!selectionMode && onDelete ? handleTouchStart : undefined}
+        onTouchMove={!selectionMode && onDelete ? handleTouchMove : undefined}
+        onTouchEnd={!selectionMode && onDelete ? handleTouchEnd : undefined}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          {selectionMode && (
+            <div style={{
+              width: 22, height: 22, borderRadius: 6,
+              border: `2px solid ${selected ? 'var(--hot-pink)' : 'var(--border)'}`,
+              background: selected ? 'var(--hot-pink)' : 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, marginRight: 10, marginTop: 2,
+            }}>
+              {selected && <span style={{ color: 'white', fontSize: 12, fontWeight: 700 }}>✓</span>}
+            </div>
+          )}
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <h4

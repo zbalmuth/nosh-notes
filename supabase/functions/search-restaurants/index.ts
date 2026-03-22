@@ -111,6 +111,22 @@ async function searchGoogle(query: string, location?: string) {
           if (comp.types?.includes('administrative_area_level_1')) state = comp.short_name;
         }
       }
+      // Normalize LA-area cities
+      if (state === 'CA') {
+        const laAreaCities = new Set([
+          'west hollywood','hollywood','beverly hills','santa monica','culver city',
+          'venice','silver lake','echo park','los feliz','koreatown','brentwood',
+          'westwood','century city','marina del rey','pacific palisades',
+          'north hollywood','burbank','glendale','pasadena','south pasadena',
+          'eagle rock','highland park','atwater village','studio city','sherman oaks',
+          'encino','tarzana','van nuys','woodland hills','canoga park','chatsworth',
+          'northridge','granada hills','calabasas','malibu','inglewood',
+          'el segundo','manhattan beach','hermosa beach','redondo beach','torrance',
+          'hawthorne','gardena','carson','compton','long beach','downey','whittier',
+          'alhambra','monterey park','san gabriel','arcadia','monrovia',
+        ]);
+        if (laAreaCities.has(city.toLowerCase())) city = 'Los Angeles';
+      }
       // Fallback: parse from formatted address
       if (!city) {
         const addressParts = (details.formatted_address || place.formatted_address || '').split(',');
@@ -198,7 +214,7 @@ async function searchGoogle(query: string, location?: string) {
         website: details.website || '',
         yelp_url: '',
         google_url: details.url || '',
-        menu_url: '',
+        menu_url: details.url ? `${details.url.replace(/\/$/, '')}/menu` : '',
         image_url: imageUrl,
         photos: [],
         price_level: priceMap[details.price_level ?? place.price_level] || '',

@@ -1,6 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, Map, Search, User } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { Home, Map, Settings } from 'lucide-react';
 
 export function BottomNav() {
   const location = useLocation();
@@ -25,21 +24,11 @@ export function BottomNav() {
         <span>Map</span>
       </button>
       <button
-        className={isActive('/search') ? 'active' : ''}
-        onClick={() => navigate('/?search=true')}
+        className={isActive('/settings') ? 'active' : ''}
+        onClick={() => navigate('/settings')}
       >
-        <Search size={22} />
-        <span>Search</span>
-      </button>
-      <button
-        onClick={() => {
-          if (confirm('Sign out?')) {
-            supabase.auth.signOut();
-          }
-        }}
-      >
-        <User size={22} />
-        <span>Account</span>
+        <Settings size={22} />
+        <span>Settings</span>
       </button>
     </nav>
   );
