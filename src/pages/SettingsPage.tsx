@@ -50,16 +50,22 @@ export function SettingsPage() {
     if (mergeFrom.length === 0 || !mergeTo.trim()) return;
     const target = mergeTo.trim();
 
-    let count = 0;
-    for (const r of restaurants) {
-      if (r.city && mergeFrom.includes(r.city)) {
-        await updateRestaurant(r.id, { city: target });
-        count++;
-      }
+    // Bulk update directly via Supabase for speed
+    const ids = restaurants.filter(r => r.city && mergeFrom.includes(r.city)).map(r => r.id);
+    if (ids.length === 0) return;
+
+    const { error } = await supabase
+      .from('restaurants')
+      .update({ city: target, updated_at: new Date().toISOString() })
+      .in('id', ids);
+
+    if (error) {
+      showToast(`Error: ${error.message}`);
+      return;
     }
 
     await refreshRestaurants();
-    showToast(`${count} restaurant${count !== 1 ? 's' : ''} moved to "${target}"`);
+    showToast(`${ids.length} restaurant${ids.length !== 1 ? 's' : ''} moved to "${target}"`);
     setMergeFrom([]);
     setMergeTo('');
   };
