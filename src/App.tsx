@@ -64,9 +64,7 @@ function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>
-          <div className="bottom-nav-wrapper">
-            <BottomNav />
-          </div>
+          <BottomNav />
         </div>
       </BrowserRouter>
     </AppProvider>

@@ -120,12 +120,11 @@ html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  background: var(--bg-card);
 }
 
 body {
   font-family: 'Poppins', sans-serif;
-  background: var(--bg-primary);
+  background: var(--bg-card);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
 }
@@ -258,15 +257,11 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  height: 56px;
+  padding: 8px 0;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   background: var(--bg-card);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
-}
-.bottom-nav-wrapper {
-  flex-shrink: 0;
-  background: var(--bg-card);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 .bottom-nav a, .bottom-nav button {
   display: flex;

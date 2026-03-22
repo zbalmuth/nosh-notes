@@ -25,8 +25,7 @@ const LA_AREA_CITIES = new Set([
   'east los angeles', 'west los angeles', 'westchester', 'inglewood',
 ]);
 
-function normalizeCity(city: string, state: string): string {
-  if (state === 'CA' && LA_AREA_CITIES.has(city.toLowerCase())) return 'Los Angeles';
+function normalizeCity(city: string, _state: string): string {
   return city;
 }
 
