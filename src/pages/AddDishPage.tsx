@@ -37,6 +37,7 @@ export function AddDishPage() {
 
   // Scan state
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeStatus, setAnalyzeStatus] = useState('');
   const [scannedDishes, setScannedDishes] = useState<ScannedDish[]>([]);
   const [scanPhoto, setScanPhoto] = useState<string | null>(null);
   const [savingScanned, setSavingScanned] = useState(false);
@@ -59,45 +60,55 @@ export function AddDishPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Show preview
-    const previewReader = new FileReader();
-    previewReader.onload = (ev) => {
-      if (ev.target?.result) setScanPhoto(ev.target.result as string);
-    };
-    previewReader.readAsDataURL(file);
-
-    // Analyze with AI
     setAnalyzing(true);
+    setAnalyzeStatus('Reading image...');
+    setScannedDishes([]);
+
     try {
-      const base64Reader = new FileReader();
-      base64Reader.onload = async (ev) => {
-        if (ev.target?.result) {
-          const base64 = (ev.target.result as string).split(',')[1];
-          try {
-            const result = await analyzeDishImage(base64);
-            if (result.dishes?.length > 0) {
-              setScannedDishes(
-                result.dishes.map((d: { name: string; dish_type: string }) => ({
-                  name: d.name,
-                  dish_type: d.dish_type || 'entree',
-                  action: 'ignore' as const,
-                  rating: 7,
-                }))
-              );
-            } else {
-              showToast('No dishes detected. Try a clearer photo.');
-            }
-          } catch {
-            showToast('AI analysis failed. Try again.');
-          } finally {
-            setAnalyzing(false);
+      // Read file as base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          if (ev.target?.result) {
+            setScanPhoto(ev.target.result as string);
+            resolve((ev.target.result as string).split(',')[1]);
+          } else {
+            reject(new Error('Failed to read file'));
           }
-        }
-      };
-      base64Reader.readAsDataURL(file);
-    } catch {
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      });
+
+      setAnalyzeStatus('Sending to AI for analysis...');
+
+      const result = await analyzeDishImage(base64);
+
+      setAnalyzeStatus('Processing results...');
+
+      if (result.dishes?.length > 0) {
+        setScannedDishes(
+          result.dishes.map((d: { name: string; dish_type: string }) => ({
+            name: d.name,
+            dish_type: d.dish_type || 'entree',
+            action: 'ignore' as const,
+            rating: 7,
+          }))
+        );
+        showToast(`Found ${result.dishes.length} dish${result.dishes.length > 1 ? 'es' : ''}!`);
+      } else {
+        showToast('No dishes detected. Try a clearer photo.');
+      }
+    } catch (err) {
+      console.error('Scan failed:', err);
+      showToast(`Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}. Check console.`);
+    } finally {
       setAnalyzing(false);
+      setAnalyzeStatus('');
     }
+
+    // Reset file input so same file can be re-selected
+    e.target.value = '';
   };
 
   const updateScannedDish = (index: number, updates: Partial<ScannedDish>) => {
@@ -367,9 +378,12 @@ export function AddDishPage() {
           {/* Analyzing spinner */}
           {analyzing && (
             <div style={{ textAlign: 'center', padding: '40px 0' }}>
-              <Loader size={32} className="spin" style={{ color: 'var(--hot-pink)', marginBottom: 12 }} />
-              <p style={{ color: 'var(--text-secondary)', fontFamily: "'Righteous', cursive" }}>
+              <Loader size={36} className="spin" style={{ color: 'var(--hot-pink)', marginBottom: 16, display: 'inline-block' }} />
+              <p style={{ color: 'var(--text-secondary)', fontFamily: "'Righteous', cursive", fontSize: 16, marginBottom: 8 }}>
                 Analyzing with AI...
+              </p>
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+                {analyzeStatus || 'Please wait...'}
               </p>
             </div>
           )}
