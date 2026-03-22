@@ -34,10 +34,26 @@ function parseAddress(addrLine: string): { address: string; city: string; state:
   const addr = addrLine.replace(/^📍\s*/, '').trim();
   const parts = addr.split(',').map(s => s.trim());
   if (parts.length >= 3) {
-    let city = parts[parts.length >= 4 ? parts.length - 3 : 1] || '';
-    const stateZipPart = parts[parts.length >= 4 ? parts.length - 2 : 2] || '';
-    const stateMatch = stateZipPart.match(/^([A-Z]{2})\s/);
+    // Find the state+zip part (e.g. "CA 90048") — scan from the end
+    let stateIdx = -1;
+    for (let i = parts.length - 1; i >= 1; i--) {
+      if (/^[A-Z]{2}\s+\d{5}/.test(parts[i]) || /^[A-Z]{2}$/.test(parts[i])) {
+        stateIdx = i;
+        break;
+      }
+    }
+    if (stateIdx === -1) stateIdx = parts.length - 1;
+    const stateZipPart = parts[stateIdx];
+    const stateMatch = stateZipPart.match(/^([A-Z]{2})/);
     const state = stateMatch ? stateMatch[1] : stateZipPart.replace(/\d+/g, '').trim();
+    // City is right before the state part, skipping suite/unit/bldg parts
+    let city = '';
+    for (let i = stateIdx - 1; i >= 1; i--) {
+      if (!/^(ste|suite|unit|bldg|apt|#)\s/i.test(parts[i]) && !/^\d+$/.test(parts[i])) {
+        city = parts[i];
+        break;
+      }
+    }
     city = normalizeCity(city, state);
     return { address: addr, city, state };
   }

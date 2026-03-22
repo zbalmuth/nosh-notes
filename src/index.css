@@ -120,6 +120,7 @@ html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
+  background: var(--bg-card);
 }
 
 body {
@@ -257,12 +258,15 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  min-height: 64px;
+  height: 56px;
   background: var(--bg-card);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+}
+.bottom-nav-wrapper {
+  flex-shrink: 0;
+  background: var(--bg-card);
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  box-sizing: content-box;
 }
 .bottom-nav a, .bottom-nav button {
   display: flex;
@@ -307,8 +311,8 @@ a {
 }
 .page-header h1 {
   font-size: 20px;
-  color: var(--hot-pink);
-  text-shadow: 0 0 15px rgba(255, 20, 147, 0.4);
+  color: var(--accent);
+  text-shadow: 0 0 15px var(--shadow);
 }
 
 /* Rating badge */
