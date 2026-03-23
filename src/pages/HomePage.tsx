@@ -69,6 +69,13 @@ export function HomePage() {
     saveFilters({ selectedList, selectedCity, selectedCuisine, favoritesOnly, showFilters });
   }, [selectedList, selectedCity, selectedCuisine, favoritesOnly, showFilters]);
 
+  // React to search param changes (e.g. clicking Search in bottom nav while already on /)
+  useEffect(() => {
+    if (searchParams.get('search') === 'true') {
+      setShowSearch(true);
+    }
+  }, [searchParams]);
+
   // Pull-to-refresh
   const [refreshing, setRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
