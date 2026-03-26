@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Camera, Loader, X, Check, Sparkles, Link } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { RatingSlider } from '../components/RatingSlider';
-import { analyzeDishImage, analyzeMenuUrl, uploadPhoto } from '../lib/api';
+import { analyzeDishImage, analyzeMenuUrl } from '../lib/api';
 import { DISH_TYPES } from '../types';
 import type { DishType } from '../types';
 
@@ -18,10 +18,9 @@ export function AddDishPage() {
   const { restaurantId } = useParams<{ restaurantId: string }>();
   const navigate = useNavigate();
   const { addDish, restaurants, showToast } = useApp();
-  const manualFileRef = useRef<HTMLInputElement>(null);
-  const manualCameraRef = useRef<HTMLInputElement>(null);
-  const scanFileRef = useRef<HTMLInputElement>(null);
+  const scanCameraRef = useRef<HTMLInputElement>(null);
   const scanGalleryRef = useRef<HTMLInputElement>(null);
+  const scanFilesRef = useRef<HTMLInputElement>(null);
 
   const restaurant = restaurants.find((r) => r.id === restaurantId);
 
@@ -34,7 +33,6 @@ export function AddDishPage() {
   const [wantToTry, setWantToTry] = useState(false);
   const [rating, setRating] = useState(7);
   const [notes, setNotes] = useState('');
-  const [photos, setPhotos] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   // Scan state
@@ -50,19 +48,6 @@ export function AddDishPage() {
   const [urlDishes, setUrlDishes] = useState<ScannedDish[]>([]);
   const [urlNote, setUrlNote] = useState('');
   const [savingUrl, setSavingUrl] = useState(false);
-
-  // Manual photo capture
-  const handleManualPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      if (ev.target?.result) {
-        setPhotos((prev) => [...prev, ev.target!.result as string]);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
 
   // Scan photo and analyze with AI
   const handleScanCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,22 +115,6 @@ export function AddDishPage() {
     if (!name.trim() || !restaurantId) return;
     setSaving(true);
     try {
-      const uploadedPhotos: string[] = [];
-      for (const photo of photos) {
-        if (photo.startsWith('data:')) {
-          try {
-            const blob = await fetch(photo).then((r) => r.blob());
-            const file = new File([blob], `dish-${Date.now()}.jpg`, { type: 'image/jpeg' });
-            const url = await uploadPhoto(file, 'dish-photos', `${restaurantId}/${file.name}`);
-            uploadedPhotos.push(url);
-          } catch {
-            uploadedPhotos.push(photo);
-          }
-        } else {
-          uploadedPhotos.push(photo);
-        }
-      }
-
       await addDish({
         restaurant_id: restaurantId,
         name: name.trim(),
@@ -153,7 +122,7 @@ export function AddDishPage() {
         want_to_try: wantToTry,
         rating: wantToTry ? null : rating,
         notes,
-        photos: uploadedPhotos,
+        photos: [],
       });
       showToast('Dish added!');
       navigate(`/restaurant/${restaurantId}`);
@@ -242,60 +211,6 @@ export function AddDishPage() {
       {/* Manual Entry Tab */}
       {activeTab === 'manual' && (
         <div style={{ padding: '16px 20px 100px' }}>
-          {/* Photo */}
-          <div className="form-group">
-            <label>Photos</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="camera-btn" style={{ flex: 1 }} onClick={() => manualCameraRef.current?.click()}>
-                <Camera size={18} />
-                Take Photo
-              </button>
-              <button className="camera-btn" style={{ flex: 1 }} onClick={() => manualFileRef.current?.click()}>
-                <Camera size={18} />
-                Gallery / Files
-              </button>
-            </div>
-            <input
-              ref={manualCameraRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleManualPhoto}
-              style={{ display: 'none' }}
-            />
-            <input
-              ref={manualFileRef}
-              type="file"
-              accept="image/*,.pdf"
-              onChange={handleManualPhoto}
-              style={{ display: 'none' }}
-            />
-          </div>
-
-          {photos.length > 0 && (
-            <div className="form-group">
-              <div className="photo-grid">
-                {photos.map((p, i) => (
-                  <div key={i} style={{ position: 'relative' }}>
-                    <img src={p} alt={`Photo ${i + 1}`} />
-                    <button
-                      onClick={() => setPhotos((prev) => prev.filter((_, idx) => idx !== i))}
-                      style={{
-                        position: 'absolute', top: 4, right: 4,
-                        background: 'rgba(0,0,0,0.6)', border: 'none',
-                        borderRadius: '50%', width: 22, height: 22,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: 'white', cursor: 'pointer',
-                      }}
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Dish Name */}
           <div className="form-group">
             <label>Dish Name *</label>
@@ -380,7 +295,7 @@ export function AddDishPage() {
         <div style={{ padding: '16px 20px 100px' }}>
           {/* Hidden file inputs for scan */}
           <input
-            ref={scanFileRef}
+            ref={scanCameraRef}
             type="file"
             accept="image/*"
             capture="environment"
@@ -390,7 +305,14 @@ export function AddDishPage() {
           <input
             ref={scanGalleryRef}
             type="file"
-            accept="image/*,.pdf"
+            accept="image/*"
+            onChange={handleScanCapture}
+            style={{ display: 'none' }}
+          />
+          <input
+            ref={scanFilesRef}
+            type="file"
+            accept="image/*,.pdf,.heic,.heif"
             onChange={handleScanCapture}
             style={{ display: 'none' }}
           />
@@ -404,7 +326,7 @@ export function AddDishPage() {
               <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
                 <button
                   className="camera-btn"
-                  onClick={() => scanFileRef.current?.click()}
+                  onClick={() => scanCameraRef.current?.click()}
                 >
                   <Camera size={20} />
                   Take Photo
@@ -414,7 +336,14 @@ export function AddDishPage() {
                   onClick={() => scanGalleryRef.current?.click()}
                 >
                   <Camera size={20} />
-                  Gallery / Files
+                  Gallery
+                </button>
+                <button
+                  className="camera-btn"
+                  onClick={() => scanFilesRef.current?.click()}
+                >
+                  <Camera size={20} />
+                  Files
                 </button>
               </div>
             </div>
@@ -521,7 +450,7 @@ export function AddDishPage() {
                   onClick={() => {
                     setScannedDishes([]);
                     setScanPhoto(null);
-                    setTimeout(() => scanFileRef.current?.click(), 100);
+                    setTimeout(() => scanCameraRef.current?.click(), 100);
                   }}
                 >
                   Rescan
