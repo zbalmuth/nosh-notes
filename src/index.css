@@ -711,13 +711,13 @@ textarea.input {
   left: 0;
   right: 0;
   padding: 20px;
-  background: linear-gradient(transparent, rgba(15, 15, 35, 0.9));
+  background: linear-gradient(transparent 0%, rgba(0, 0, 0, 0.7) 60%, rgba(0, 0, 0, 0.95) 100%);
   color: var(--white);
 }
 .restaurant-hero .hero-overlay h1 {
-  color: var(--white);
+  color: #ffffff;
   font-size: 24px;
-  text-shadow: 0 0 20px rgba(255, 20, 147, 0.4);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8), 0 0 20px rgba(255, 20, 147, 0.4);
 }
 
 /* Info row */

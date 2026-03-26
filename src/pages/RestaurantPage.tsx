@@ -336,7 +336,7 @@ export function RestaurantPage() {
         </div>
 
         {/* Dish type filter */}
-        {dishTypesPresent.length > 1 && (
+        {dishes.length > 0 && dishTypesPresent.length > 0 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
             <button
               className={`chip ${!dishTypeFilter ? 'active' : ''}`}
