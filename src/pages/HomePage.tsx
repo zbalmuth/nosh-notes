@@ -12,6 +12,8 @@ import {
   Copy,
   ArrowRight,
   Share2,
+  ArrowDownAZ,
+  ArrowUpZA,
 } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { RestaurantCard } from '../components/RestaurantCard';
@@ -59,6 +61,7 @@ export function HomePage() {
   const [selectedCity, setSelectedCity] = useState<string>(saved.selectedCity || 'all');
   const [selectedCuisine, setSelectedCuisine] = useState<string>(saved.selectedCuisine || 'all');
   const [favoritesOnly, setFavoritesOnly] = useState(saved.favoritesOnly || false);
+  const [sortOrder, setSortOrder] = useState<'az' | 'za'>(saved.sortOrder || 'az');
   const [showFilters, setShowFilters] = useState(saved.showFilters || false);
   const [showListDropdown, setShowListDropdown] = useState(false);
   const [showNewList, setShowNewList] = useState(false);
@@ -66,8 +69,8 @@ export function HomePage() {
 
   // Persist filter state to localStorage
   useEffect(() => {
-    saveFilters({ selectedList, selectedCity, selectedCuisine, favoritesOnly, showFilters });
-  }, [selectedList, selectedCity, selectedCuisine, favoritesOnly, showFilters]);
+    saveFilters({ selectedList, selectedCity, selectedCuisine, favoritesOnly, showFilters, sortOrder });
+  }, [selectedList, selectedCity, selectedCuisine, favoritesOnly, showFilters, sortOrder]);
 
   // React to search param changes (e.g. clicking Search in bottom nav while already on /)
   useEffect(() => {
@@ -246,8 +249,13 @@ export function HomePage() {
       );
     }
 
+    result = [...result].sort((a, b) => {
+      const cmp = a.name.localeCompare(b.name);
+      return sortOrder === 'az' ? cmp : -cmp;
+    });
+
     return result;
-  }, [restaurants, favoritesOnly, selectedList, selectedCity, selectedCuisine, searchQuery]);
+  }, [restaurants, favoritesOnly, selectedList, selectedCity, selectedCuisine, searchQuery, sortOrder]);
 
   const handleCreateList = async () => {
     if (!newListName.trim()) return;
@@ -463,6 +471,13 @@ export function HomePage() {
         >
           <Star size={12} fill={favoritesOnly ? 'var(--white)' : 'none'} />
           Favorites
+        </button>
+        <button
+          className="chip"
+          onClick={() => setSortOrder(sortOrder === 'az' ? 'za' : 'az')}
+        >
+          {sortOrder === 'az' ? <ArrowDownAZ size={12} /> : <ArrowUpZA size={12} />}
+          {sortOrder === 'az' ? 'A → Z' : 'Z → A'}
         </button>
         <button
           className={`chip ${showFilters ? 'active' : ''}`}

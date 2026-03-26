@@ -1,7 +1,8 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Filter, Star, X } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
+import { supabase } from '../lib/supabase';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Restaurant } from '../types';
@@ -40,6 +41,31 @@ export function MapPage() {
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
   const userMarkerRef = useRef<L.Marker | null>(null);
+  const hasRestoredView = useRef(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  // Clean up debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, []);
+
+  // Debounced save to Supabase
+  const saveMapView = useCallback((lat: number, lng: number, zoom: number) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from('user_preferences').upsert({
+        user_id: user.id,
+        map_lat: lat,
+        map_lng: lng,
+        map_zoom: zoom,
+        updated_at: new Date().toISOString(),
+      });
+    }, 1000);
+  }, []);
 
   const filtered = useMemo(() => {
     let result = restaurants.filter((r) => r.latitude && r.longitude);
@@ -54,24 +80,58 @@ export function MapPage() {
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    const map = L.map(mapContainerRef.current, {
-      zoomControl: true,
-      attributionControl: false,
-    }).setView([40.7128, -74.006], 12);
+    const initMap = async () => {
+      let center: [number, number] = [40.7128, -74.006];
+      let zoom = 12;
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-    }).addTo(map);
+      // Load saved view from Supabase
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data } = await supabase
+            .from('user_preferences')
+            .select('map_lat, map_lng, map_zoom')
+            .eq('user_id', user.id)
+            .single();
+          if (data?.map_lat != null && data?.map_lng != null) {
+            center = [data.map_lat, data.map_lng];
+            zoom = data.map_zoom ?? 12;
+            hasRestoredView.current = true;
+          }
+        }
+      } catch {}
 
-    mapRef.current = map;
-    markersRef.current = L.layerGroup().addTo(map);
+      if (!mapContainerRef.current || mapRef.current) return;
+
+      const map = L.map(mapContainerRef.current, {
+        zoomControl: true,
+        attributionControl: false,
+      }).setView(center, zoom);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+      }).addTo(map);
+
+      // Persist map position on every move/zoom
+      map.on('moveend', () => {
+        const c = map.getCenter();
+        saveMapView(c.lat, c.lng, map.getZoom());
+      });
+
+      mapRef.current = map;
+      markersRef.current = L.layerGroup().addTo(map);
+    };
+
+    initMap();
 
     return () => {
-      map.remove();
-      mapRef.current = null;
-      markersRef.current = null;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+        markersRef.current = null;
+      }
     };
-  }, []);
+  }, [saveMapView]);
 
   // Get user location
   useEffect(() => {
@@ -126,7 +186,7 @@ export function MapPage() {
       bounds.extend([r.latitude, r.longitude]);
     });
 
-    if (bounds.isValid()) {
+    if (bounds.isValid() && !hasRestoredView.current) {
       mapRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
     }
   }, [filtered]);

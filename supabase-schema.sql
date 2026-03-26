@@ -91,6 +91,21 @@ CREATE TRIGGER on_auth_user_created
 -- Storage bucket for dish photos (run in Supabase Dashboard > Storage)
 -- Create a bucket named "dish-photos" with public access
 
+-- User preferences (map position, etc.)
+CREATE TABLE IF NOT EXISTS user_preferences (
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+  map_lat FLOAT,
+  map_lng FLOAT,
+  map_zoom FLOAT,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own preferences" ON user_preferences FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own preferences" ON user_preferences FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own preferences" ON user_preferences FOR UPDATE USING (auth.uid() = user_id);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_restaurants_user_id ON restaurants(user_id);
 CREATE INDEX IF NOT EXISTS idx_restaurants_city ON restaurants(city);

@@ -259,10 +259,9 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 8px 0;
-  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   background: var(--bg-card);
   border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   z-index: 1000;
 }
 .bottom-nav a, .bottom-nav button {
@@ -437,11 +436,17 @@ a {
 
 /* Favorite button */
 .favorite-btn {
-  background: none;
-  border: none;
-  padding: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   color: var(--text-muted);
-  transition: color 0.2s, transform 0.2s;
+  transition: color 0.2s, transform 0.2s, background 0.2s;
 }
 .favorite-btn.active {
   color: var(--neon-pink);
