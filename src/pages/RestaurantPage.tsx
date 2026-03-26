@@ -20,6 +20,7 @@ import {
 import { useApp } from '../hooks/useAppContext';
 import { DishCard } from '../components/DishCard';
 import type { Restaurant, Dish } from '../types';
+import { DISH_TYPES } from '../types';
 
 const RATING_GROUPS = [
   { label: 'Amazing', min: 9.5, max: 10 },
@@ -50,6 +51,7 @@ export function RestaurantPage() {
   const [infoExpanded, setInfoExpanded] = useState(false);
   const [dishSelectionMode, setDishSelectionMode] = useState(false);
   const [selectedDishIds, setSelectedDishIds] = useState<Set<string>>(new Set());
+  const [dishTypeFilter, setDishTypeFilter] = useState<string | null>(null);
 
   useEffect(() => {
     const r = restaurants.find((r) => r.id === id);
@@ -65,14 +67,24 @@ export function RestaurantPage() {
     }
   }, [id, getDishes]);
 
+  const filteredDishes = useMemo(() => {
+    if (!dishTypeFilter) return dishes;
+    return dishes.filter((d) => d.dish_type === dishTypeFilter);
+  }, [dishes, dishTypeFilter]);
+
+  const dishTypesPresent = useMemo(() => {
+    const types = new Set(dishes.map((d) => d.dish_type));
+    return DISH_TYPES.filter((t) => types.has(t.value));
+  }, [dishes]);
+
   const groupedDishes = useMemo(() => {
     const groups: { label: string; dishes: Dish[] }[] = [];
     for (const group of RATING_GROUPS) {
       let matched: Dish[];
       if (group.label === 'Want to Try') {
-        matched = dishes.filter((d) => d.want_to_try);
+        matched = filteredDishes.filter((d) => d.want_to_try);
       } else {
-        matched = dishes.filter(
+        matched = filteredDishes.filter(
           (d) => !d.want_to_try && d.rating !== null && d.rating >= group.min && d.rating <= group.max
         );
       }
@@ -80,12 +92,12 @@ export function RestaurantPage() {
         groups.push({ label: group.label, dishes: matched });
       }
     }
-    const unrated = dishes.filter((d) => !d.want_to_try && d.rating === null);
+    const unrated = filteredDishes.filter((d) => !d.want_to_try && d.rating === null);
     if (unrated.length > 0) {
       groups.push({ label: 'Unrated', dishes: unrated });
     }
     return groups;
-  }, [dishes]);
+  }, [filteredDishes]);
 
   const toggleSection = (label: string) => {
     setCollapsedSections((prev) => {
@@ -306,9 +318,9 @@ export function RestaurantPage() {
         <div className="section-divider" />
 
         {/* Dishes Section */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <h2 style={{ fontFamily: "'Righteous', cursive", fontSize: 20, color: 'var(--hot-pink)' }}>
-            Dishes ({dishes.length})
+            Dishes ({dishTypeFilter ? `${filteredDishes.length}/${dishes.length}` : dishes.length})
           </h2>
           {dishes.length > 0 && (
             <button
@@ -322,6 +334,29 @@ export function RestaurantPage() {
             </button>
           )}
         </div>
+
+        {/* Dish type filter */}
+        {dishTypesPresent.length > 1 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+            <button
+              className={`chip ${!dishTypeFilter ? 'active' : ''}`}
+              onClick={() => setDishTypeFilter(null)}
+              style={{ fontSize: 12, padding: '4px 12px' }}
+            >
+              All
+            </button>
+            {dishTypesPresent.map((t) => (
+              <button
+                key={t.value}
+                className={`chip ${dishTypeFilter === t.value ? 'active' : ''}`}
+                onClick={() => setDishTypeFilter(dishTypeFilter === t.value ? null : t.value)}
+                style={{ fontSize: 12, padding: '4px 12px' }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Dish selection action bar */}
         {dishSelectionMode && (
