@@ -12,9 +12,9 @@ import { MapPage } from './pages/MapPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { BottomNav } from './components/BottomNav';
 import { AppProvider } from './hooks/useAppContext';
-import { applyTheme, getTheme } from './pages/SettingsPage';
+import { applyTheme, getTheme, loadThemeFromServer } from './pages/SettingsPage';
 
-// Apply saved theme on load
+// Apply locally saved theme immediately (no flash)
 applyTheme(getTheme());
 
 function App() {
@@ -25,6 +25,7 @@ function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
+      if (session) loadThemeFromServer();
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(

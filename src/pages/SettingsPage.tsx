@@ -19,6 +19,16 @@ export function getTheme(): ThemeName {
 export function setTheme(theme: ThemeName) {
   localStorage.setItem(THEME_KEY, theme);
   applyTheme(theme);
+  // Also persist to Supabase so it syncs across devices
+  supabase.auth.getUser().then(({ data: { user } }) => {
+    if (user) {
+      supabase.from('user_preferences').upsert({
+        user_id: user.id,
+        theme,
+        updated_at: new Date().toISOString(),
+      }).then(() => {});
+    }
+  });
 }
 
 export function applyTheme(theme: ThemeName) {
@@ -28,6 +38,23 @@ export function applyTheme(theme: ThemeName) {
   } else {
     root.setAttribute('data-theme', theme);
   }
+}
+
+// Load theme from Supabase (call on app init)
+export async function loadThemeFromServer() {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await supabase
+      .from('user_preferences')
+      .select('theme')
+      .eq('user_id', user.id)
+      .single();
+    if (data?.theme) {
+      localStorage.setItem(THEME_KEY, data.theme);
+      applyTheme(data.theme as ThemeName);
+    }
+  } catch {}
 }
 
 export function SettingsPage() {

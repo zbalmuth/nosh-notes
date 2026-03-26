@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   map_lat FLOAT,
   map_lng FLOAT,
   map_zoom FLOAT,
+  theme TEXT DEFAULT 'miami',
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 

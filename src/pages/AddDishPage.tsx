@@ -19,7 +19,9 @@ export function AddDishPage() {
   const navigate = useNavigate();
   const { addDish, restaurants, showToast } = useApp();
   const manualFileRef = useRef<HTMLInputElement>(null);
+  const manualCameraRef = useRef<HTMLInputElement>(null);
   const scanFileRef = useRef<HTMLInputElement>(null);
+  const scanGalleryRef = useRef<HTMLInputElement>(null);
 
   const restaurant = restaurants.find((r) => r.id === restaurantId);
 
@@ -228,15 +230,28 @@ export function AddDishPage() {
           {/* Photo */}
           <div className="form-group">
             <label>Photos</label>
-            <button className="camera-btn" onClick={() => manualFileRef.current?.click()}>
-              <Camera size={20} />
-              Add Photo
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="camera-btn" style={{ flex: 1 }} onClick={() => manualCameraRef.current?.click()}>
+                <Camera size={18} />
+                Take Photo
+              </button>
+              <button className="camera-btn" style={{ flex: 1 }} onClick={() => manualFileRef.current?.click()}>
+                <Camera size={18} />
+                Gallery / Files
+              </button>
+            </div>
             <input
-              ref={manualFileRef}
+              ref={manualCameraRef}
               type="file"
               accept="image/*"
               capture="environment"
+              onChange={handleManualPhoto}
+              style={{ display: 'none' }}
+            />
+            <input
+              ref={manualFileRef}
+              type="file"
+              accept="image/*,.pdf"
               onChange={handleManualPhoto}
               style={{ display: 'none' }}
             />
@@ -348,7 +363,7 @@ export function AddDishPage() {
       {/* Scan Tab */}
       {activeTab === 'scan' && (
         <div style={{ padding: '16px 20px 100px' }}>
-          {/* Always-present hidden file input for scan */}
+          {/* Hidden file inputs for scan */}
           <input
             ref={scanFileRef}
             type="file"
@@ -357,21 +372,36 @@ export function AddDishPage() {
             onChange={handleScanCapture}
             style={{ display: 'none' }}
           />
+          <input
+            ref={scanGalleryRef}
+            type="file"
+            accept="image/*,.pdf"
+            onChange={handleScanCapture}
+            style={{ display: 'none' }}
+          />
 
-          {/* No scan yet — show capture button */}
+          {/* No scan yet — show capture buttons */}
           {scannedDishes.length === 0 && !analyzing && (
             <div style={{ textAlign: 'center', padding: '30px 0' }}>
               <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 14 }}>
                 Take a photo of a menu, receipt, or dish to auto-detect items
               </p>
-              <button
-                className="camera-btn"
-                style={{ margin: '0 auto' }}
-                onClick={() => scanFileRef.current?.click()}
-              >
-                <Camera size={20} />
-                Take Photo or Upload
-              </button>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                <button
+                  className="camera-btn"
+                  onClick={() => scanFileRef.current?.click()}
+                >
+                  <Camera size={20} />
+                  Take Photo
+                </button>
+                <button
+                  className="camera-btn"
+                  onClick={() => scanGalleryRef.current?.click()}
+                >
+                  <Camera size={20} />
+                  Gallery / Files
+                </button>
+              </div>
             </div>
           )}
 
