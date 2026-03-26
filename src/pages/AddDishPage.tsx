@@ -18,9 +18,7 @@ export function AddDishPage() {
   const { restaurantId } = useParams<{ restaurantId: string }>();
   const navigate = useNavigate();
   const { addDish, restaurants, showToast } = useApp();
-  const scanCameraRef = useRef<HTMLInputElement>(null);
-  const scanGalleryRef = useRef<HTMLInputElement>(null);
-  const scanFilesRef = useRef<HTMLInputElement>(null);
+  const scanFileRef = useRef<HTMLInputElement>(null);
 
   const restaurant = restaurants.find((r) => r.id === restaurantId);
 
@@ -293,59 +291,29 @@ export function AddDishPage() {
       {/* Scan Tab */}
       {activeTab === 'scan' && (
         <div style={{ padding: '16px 20px 100px' }}>
-          {/* Hidden file inputs for scan */}
+          {/* Hidden file input for scan */}
           <input
-            ref={scanCameraRef}
+            ref={scanFileRef}
             type="file"
             accept="image/*"
-            capture="environment"
-            onChange={handleScanCapture}
-            style={{ display: 'none' }}
-          />
-          <input
-            ref={scanGalleryRef}
-            type="file"
-            accept="image/*"
-            onChange={handleScanCapture}
-            style={{ display: 'none' }}
-          />
-          <input
-            ref={scanFilesRef}
-            type="file"
-            accept="image/*,.pdf,.heic,.heif"
             onChange={handleScanCapture}
             style={{ display: 'none' }}
           />
 
-          {/* No scan yet — show capture buttons */}
+          {/* No scan yet — show capture button */}
           {scannedDishes.length === 0 && !analyzing && (
             <div style={{ textAlign: 'center', padding: '30px 0' }}>
               <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 14 }}>
                 Take a photo of a menu, receipt, or dish to auto-detect items
               </p>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-                <button
-                  className="camera-btn"
-                  onClick={() => scanCameraRef.current?.click()}
-                >
-                  <Camera size={20} />
-                  Take Photo
-                </button>
-                <button
-                  className="camera-btn"
-                  onClick={() => scanGalleryRef.current?.click()}
-                >
-                  <Camera size={20} />
-                  Gallery
-                </button>
-                <button
-                  className="camera-btn"
-                  onClick={() => scanFilesRef.current?.click()}
-                >
-                  <Camera size={20} />
-                  Files
-                </button>
-              </div>
+              <button
+                className="camera-btn"
+                style={{ width: '100%', maxWidth: 300, margin: '0 auto', padding: '16px 24px', fontSize: 16 }}
+                onClick={() => scanFileRef.current?.click()}
+              >
+                <Camera size={22} />
+                Take Photo / Gallery / Files
+              </button>
             </div>
           )}
 
@@ -450,7 +418,7 @@ export function AddDishPage() {
                   onClick={() => {
                     setScannedDishes([]);
                     setScanPhoto(null);
-                    setTimeout(() => scanCameraRef.current?.click(), 100);
+                    setTimeout(() => scanFileRef.current?.click(), 100);
                   }}
                 >
                   Rescan

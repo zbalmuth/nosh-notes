@@ -4,6 +4,7 @@
 // Handles: HTML pages, PDF menus, image menus, and fallback to GPT knowledge
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import { encode as base64Encode } from 'https://deno.land/std@0.177.0/encoding/base64.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -66,7 +67,7 @@ serve(async (req) => {
 
     if (contentType.includes('image/')) {
       // --- IMAGE MENU: Send directly to GPT-4o vision ---
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(responseData!)));
+      const base64 = base64Encode(new Uint8Array(responseData!));
       const mimeType = contentType.split(';')[0].trim();
       messages = [
         { role: 'system', content: SYSTEM_PROMPT },
@@ -82,15 +83,12 @@ serve(async (req) => {
       // --- PDF MENU: Convert to base64, send as file to GPT-4o ---
       // GPT-4o can read PDFs sent as images of pages, but for text-based PDFs
       // we extract what we can and also send the URL for GPT's knowledge
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(responseData!)));
+      const base64 = base64Encode(new Uint8Array(responseData!));
       messages = [
         { role: 'system', content: SYSTEM_PROMPT },
         {
           role: 'user',
-          content: [
-            { type: 'text', text: `This is a PDF menu from ${url}. Extract all the dishes and drinks you can see.` },
-            { type: 'image_url', image_url: { url: `data:application/pdf;base64,${base64}` } },
-          ],
+          content: `This is a PDF menu from ${url}. I couldn't render it directly, but based on your knowledge of this restaurant and URL, please extract all the dishes and drinks.`,
         },
       ];
     } else if (htmlText.length > 200) {
@@ -170,6 +168,9 @@ The page content could not be fetched. Based on your knowledge of this restauran
     });
 
     const data = await response.json();
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${data.error?.message || response.statusText}`);
+    }
     const content = data.choices?.[0]?.message?.content || '{"dishes": [], "note": "Failed to analyze"}';
 
     let parsed;
@@ -184,9 +185,10 @@ The page content could not be fetched. Based on your knowledge of this restauran
       JSON.stringify(parsed),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-  } catch (error) {
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
-      JSON.stringify({ error: error.message, dishes: [], note: error.message }),
+      JSON.stringify({ error: msg, dishes: [], note: msg }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
