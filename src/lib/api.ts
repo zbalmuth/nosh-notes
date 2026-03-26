@@ -157,6 +157,17 @@ export async function analyzeDishImage(imageBase64: string): Promise<{
   return data;
 }
 
+// ─── AI Menu URL Analysis (via Edge Function proxy) ─────────────────────────
+export async function analyzeMenuUrl(url: string): Promise<{
+  dishes: { name: string; dish_type: string }[];
+}> {
+  const { data, error } = await supabase.functions.invoke('analyze-menu-url', {
+    body: { url },
+  });
+  if (error) throw error;
+  return data;
+}
+
 // ─── Photo Upload ───────────────────────────────────────────────────────────
 export async function uploadPhoto(file: File, bucket: string, path: string): Promise<string> {
   const { error } = await supabase.storage.from(bucket).upload(path, file);

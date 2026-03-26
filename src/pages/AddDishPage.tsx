@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Camera, Loader, X, Check, Sparkles } from 'lucide-react';
+import { ArrowLeft, Camera, Loader, X, Check, Sparkles, Link } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { RatingSlider } from '../components/RatingSlider';
-import { analyzeDishImage, uploadPhoto } from '../lib/api';
+import { analyzeDishImage, analyzeMenuUrl, uploadPhoto } from '../lib/api';
 import { DISH_TYPES } from '../types';
 import type { DishType } from '../types';
 
@@ -26,7 +26,7 @@ export function AddDishPage() {
   const restaurant = restaurants.find((r) => r.id === restaurantId);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'manual' | 'scan'>('manual');
+  const [activeTab, setActiveTab] = useState<'manual' | 'scan' | 'url'>('manual');
 
   // Manual entry state
   const [name, setName] = useState('');
@@ -43,6 +43,13 @@ export function AddDishPage() {
   const [scannedDishes, setScannedDishes] = useState<ScannedDish[]>([]);
   const [scanPhoto, setScanPhoto] = useState<string | null>(null);
   const [savingScanned, setSavingScanned] = useState(false);
+
+  // URL state
+  const [menuUrl, setMenuUrl] = useState('');
+  const [urlLoading, setUrlLoading] = useState(false);
+  const [urlDishes, setUrlDishes] = useState<ScannedDish[]>([]);
+  const [urlNote, setUrlNote] = useState('');
+  const [savingUrl, setSavingUrl] = useState(false);
 
   // Manual photo capture
   const handleManualPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -221,6 +228,14 @@ export function AddDishPage() {
         >
           <Camera size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
           Scan
+        </button>
+        <button
+          className={activeTab === 'url' ? 'active' : ''}
+          onClick={() => setActiveTab('url')}
+          style={{ flex: 1 }}
+        >
+          <Link size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
+          URL
         </button>
       </div>
 
@@ -523,6 +538,187 @@ export function AddDishPage() {
                 </button>
               </div>
 
+            </>
+          )}
+        </div>
+      )}
+
+      {/* URL Tab */}
+      {activeTab === 'url' && (
+        <div style={{ padding: '16px 20px 100px' }}>
+          {urlDishes.length === 0 && !urlLoading && (
+            <div>
+              <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 14, textAlign: 'center' }}>
+                Paste a menu URL and we'll extract the dishes for you
+              </p>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <input
+                  className="input"
+                  type="url"
+                  placeholder="https://restaurant.com/menu"
+                  value={menuUrl}
+                  onChange={(e) => setMenuUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && menuUrl.trim()) {
+                      setUrlLoading(true);
+                      setUrlNote('');
+                      analyzeMenuUrl(menuUrl.trim())
+                        .then((result) => {
+                          const dishes = (result.dishes || []).map((d: { name: string; dish_type: string }) => ({
+                            name: d.name,
+                            dish_type: d.dish_type,
+                            action: 'want_to_try' as const,
+                            rating: 7,
+                          }));
+                          setUrlDishes(dishes);
+                          setUrlNote(result.note || '');
+                        })
+                        .catch((err) => setUrlNote(err.message || 'Failed to analyze menu'))
+                        .finally(() => setUrlLoading(false));
+                    }
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  className="btn btn-primary"
+                  style={{ padding: '12px 20px', whiteSpace: 'nowrap' }}
+                  disabled={urlLoading || !menuUrl.trim()}
+                  onClick={() => {
+                    if (!menuUrl.trim()) return;
+                    setUrlLoading(true);
+                    setUrlNote('');
+                    analyzeMenuUrl(menuUrl.trim())
+                      .then((result) => {
+                        const dishes = (result.dishes || []).map((d: { name: string; dish_type: string }) => ({
+                          name: d.name,
+                          dish_type: d.dish_type,
+                          action: 'want_to_try' as const,
+                          rating: 7,
+                        }));
+                        setUrlDishes(dishes);
+                        setUrlNote(result.note || '');
+                      })
+                      .catch((err) => setUrlNote(err.message || 'Failed to analyze menu'))
+                      .finally(() => setUrlLoading(false));
+                  }}
+                >
+                  {urlLoading ? <Loader size={18} className="spin" /> : 'Import'}
+                </button>
+              </div>
+              {urlNote && (
+                <p style={{ color: 'var(--coral)', fontSize: 13, textAlign: 'center' }}>{urlNote}</p>
+              )}
+              <p style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', marginTop: 8 }}>
+                Works with online menus, PDFs, and image menus
+              </p>
+            </div>
+          )}
+
+          {urlLoading && (
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <div className="loading-spinner" />
+              <p style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 12 }}>Analyzing menu...</p>
+            </div>
+          )}
+
+          {urlDishes.length > 0 && !urlLoading && (
+            <>
+              {urlNote && (
+                <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 12, textAlign: 'center' }}>{urlNote}</p>
+              )}
+              <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
+                {urlDishes.length} items found — choose what to add:
+              </p>
+
+              {urlDishes.map((dish, i) => (
+                <div
+                  key={i}
+                  style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)',
+                    padding: 14,
+                    marginBottom: 10,
+                  }}
+                >
+                  <input
+                    className="input"
+                    value={dish.name}
+                    onChange={(e) => {
+                      setUrlDishes((prev) => prev.map((d, j) => j === i ? { ...d, name: e.target.value } : d));
+                    }}
+                    style={{ fontFamily: "'Righteous', cursive", fontSize: 15, marginBottom: 8, padding: '6px 10px' }}
+                  />
+
+                  <div style={{ display: 'flex', gap: 6, marginBottom: dish.action === 'rate' ? 10 : 0 }}>
+                    <button
+                      className={`chip ${dish.action === 'rate' ? 'active' : ''}`}
+                      onClick={() => setUrlDishes((prev) => prev.map((d, j) => j === i ? { ...d, action: d.action === 'rate' ? 'ignore' : 'rate' } : d))}
+                      style={{ flex: 1, justifyContent: 'center' }}
+                    >
+                      <Check size={12} /> Rate
+                    </button>
+                    <button
+                      className={`chip ${dish.action === 'want_to_try' ? 'active' : ''}`}
+                      onClick={() => setUrlDishes((prev) => prev.map((d, j) => j === i ? { ...d, action: d.action === 'want_to_try' ? 'ignore' : 'want_to_try' } : d))}
+                      style={{ flex: 1, justifyContent: 'center' }}
+                    >
+                      <Sparkles size={12} /> Want to Try
+                    </button>
+                    <button
+                      className={`chip ${dish.action === 'ignore' ? '' : ''}`}
+                      onClick={() => setUrlDishes((prev) => prev.map((d, j) => j === i ? { ...d, action: 'ignore' } : d))}
+                      style={{ flex: 1, justifyContent: 'center', opacity: dish.action === 'ignore' ? 1 : 0.5 }}
+                    >
+                      <X size={12} /> Skip
+                    </button>
+                  </div>
+
+                  {dish.action === 'rate' && (
+                    <RatingSlider
+                      value={dish.rating}
+                      onChange={(val) => setUrlDishes((prev) => prev.map((d, j) => j === i ? { ...d, rating: val } : d))}
+                    />
+                  )}
+                </div>
+              ))}
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                <button
+                  className="btn btn-secondary"
+                  style={{ flex: 1 }}
+                  onClick={() => { setUrlDishes([]); setMenuUrl(''); setUrlNote(''); }}
+                >
+                  Clear
+                </button>
+                <button
+                  className="btn btn-primary"
+                  style={{ flex: 2 }}
+                  disabled={savingUrl || urlDishes.every((d) => d.action === 'ignore')}
+                  onClick={async () => {
+                    if (!restaurantId) return;
+                    setSavingUrl(true);
+                    const toAdd = urlDishes.filter((d) => d.action !== 'ignore');
+                    for (const dish of toAdd) {
+                      await addDish({
+                        restaurant_id: restaurantId,
+                        name: dish.name,
+                        dish_type: dish.dish_type as DishType,
+                        want_to_try: dish.action === 'want_to_try',
+                        rating: dish.action === 'rate' ? dish.rating : null,
+                        notes: '',
+                      });
+                    }
+                    setSavingUrl(false);
+                    showToast(`${toAdd.length} dish${toAdd.length !== 1 ? 'es' : ''} added!`);
+                    navigate(`/restaurant/${restaurantId}`);
+                  }}
+                >
+                  {savingUrl
+                    ? 'Saving...'
+                    : `Add ${urlDishes.filter((d) => d.action !== 'ignore').length} Dish${urlDishes.filter((d) => d.action !== 'ignore').length !== 1 ? 'es' : ''}`}
+                </button>
+              </div>
             </>
           )}
         </div>
