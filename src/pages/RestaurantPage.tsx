@@ -16,21 +16,12 @@ import {
   BookOpen,
   CheckSquare,
   Share2,
+  ArrowUpDown,
 } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { DishCard } from '../components/DishCard';
 import type { Restaurant, Dish } from '../types';
 import { DISH_TYPES } from '../types';
-
-const RATING_GROUPS = [
-  { label: 'Amazing', min: 9.5, max: 10 },
-  { label: 'Great', min: 7.5, max: 9 },
-  { label: 'Good', min: 5.5, max: 7 },
-  { label: 'Okay', min: 3.5, max: 5 },
-  { label: 'Edible', min: 1.5, max: 3 },
-  { label: 'Dislike', min: 0, max: 1 },
-  { label: 'Want to Try', min: -1, max: -1 },
-];
 
 export function RestaurantPage() {
   const { id } = useParams<{ id: string }>();
@@ -47,11 +38,12 @@ export function RestaurantPage() {
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [loading, setLoading] = useState(true);
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [infoExpanded, setInfoExpanded] = useState(false);
   const [dishSelectionMode, setDishSelectionMode] = useState(false);
   const [selectedDishIds, setSelectedDishIds] = useState<Set<string>>(new Set());
   const [dishTypeFilter, setDishTypeFilter] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'rating' | 'alpha'>('rating');
+  const [sortReversed, setSortReversed] = useState(false);
 
   useEffect(() => {
     const r = restaurants.find((r) => r.id === id);
@@ -77,35 +69,40 @@ export function RestaurantPage() {
     return DISH_TYPES.filter((t) => types.has(t.value));
   }, [dishes]);
 
-  const groupedDishes = useMemo(() => {
-    const groups: { label: string; dishes: Dish[] }[] = [];
-    for (const group of RATING_GROUPS) {
-      let matched: Dish[];
-      if (group.label === 'Want to Try') {
-        matched = filteredDishes.filter((d) => d.want_to_try);
+  const sortedDishes = useMemo(() => {
+    const dir = sortReversed ? -1 : 1;
+    return [...filteredDishes].sort((a, b) => {
+      if (sortBy === 'rating') {
+        // Want to try dishes always at the end
+        if (a.want_to_try && !b.want_to_try) return 1;
+        if (!a.want_to_try && b.want_to_try) return -1;
+        // Unrated dishes just before want-to-try
+        if (a.rating === null && b.rating !== null) return 1;
+        if (a.rating !== null && b.rating === null) return -1;
+        // Default: highest first; reversed: lowest first
+        return ((b.rating ?? 0) - (a.rating ?? 0)) * dir;
       } else {
-        matched = filteredDishes.filter(
-          (d) => !d.want_to_try && d.rating !== null && d.rating >= group.min && d.rating <= group.max
-        );
+        return a.name.localeCompare(b.name) * dir;
       }
-      if (matched.length > 0) {
-        groups.push({ label: group.label, dishes: matched });
-      }
-    }
-    const unrated = filteredDishes.filter((d) => !d.want_to_try && d.rating === null);
-    if (unrated.length > 0) {
-      groups.push({ label: 'Unrated', dishes: unrated });
-    }
-    return groups;
-  }, [filteredDishes]);
-
-  const toggleSection = (label: string) => {
-    setCollapsedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label);
-      else next.add(label);
-      return next;
     });
+  }, [filteredDishes, sortBy, sortReversed]);
+
+  const handleSortToggle = () => {
+    if (sortBy === 'rating' && !sortReversed) {
+      // First press on rating: reverse it
+      setSortReversed(true);
+    } else if (sortBy === 'rating' && sortReversed) {
+      // Switch to alpha
+      setSortBy('alpha');
+      setSortReversed(false);
+    } else if (sortBy === 'alpha' && !sortReversed) {
+      // Reverse alpha
+      setSortReversed(true);
+    } else {
+      // Back to rating default
+      setSortBy('rating');
+      setSortReversed(false);
+    }
   };
 
   const handleDeleteDish = async (dishId: string) => {
@@ -323,15 +320,29 @@ export function RestaurantPage() {
             Dishes ({dishTypeFilter ? `${filteredDishes.length}/${dishes.length}` : dishes.length})
           </h2>
           {dishes.length > 0 && (
-            <button
-              onClick={() => {
-                if (dishSelectionMode) exitDishSelectionMode();
-                else setDishSelectionMode(true);
-              }}
-              style={{ background: 'none', border: 'none', color: dishSelectionMode ? 'var(--electric-blue)' : 'var(--text-muted)', padding: 4 }}
-            >
-              <CheckSquare size={18} />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button
+                onClick={handleSortToggle}
+                style={{
+                  background: 'none', border: 'none',
+                  color: 'var(--text-muted)', padding: 4,
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  fontSize: 11, fontFamily: "'Righteous', cursive",
+                }}
+              >
+                <ArrowUpDown size={14} />
+                <span>{sortBy === 'rating' ? 'Rating' : 'A-Z'}{sortReversed ? ' ↑' : ' ↓'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  if (dishSelectionMode) exitDishSelectionMode();
+                  else setDishSelectionMode(true);
+                }}
+                style={{ background: 'none', border: 'none', color: dishSelectionMode ? 'var(--electric-blue)' : 'var(--text-muted)', padding: 4 }}
+              >
+                <CheckSquare size={18} />
+              </button>
+            </div>
           )}
         </div>
 
@@ -401,35 +412,20 @@ export function RestaurantPage() {
             <p>Add your first dish to this restaurant</p>
           </div>
         ) : (
-          groupedDishes.map((group) => (
-            <div key={group.label} style={{ marginBottom: 12 }}>
-              <button
-                className="collapsible-header"
-                onClick={() => toggleSection(group.label)}
-              >
-                <h3>
-                  {group.label} ({group.dishes.length})
-                </h3>
-                {collapsedSections.has(group.label) ? (
-                  <ChevronDown size={18} color="var(--text-muted)" />
-                ) : (
-                  <ChevronUp size={18} color="var(--text-muted)" />
-                )}
-              </button>
-              {!collapsedSections.has(group.label) &&
-                group.dishes.map((dish) => (
-                  <DishCard
-                    key={dish.id}
-                    dish={dish}
-                    onDelete={dishSelectionMode ? undefined : () => handleDeleteDish(dish.id)}
-                    onEdit={dishSelectionMode ? undefined : () => navigate(`/restaurant/${id}/dish/${dish.id}/edit`)}
-                    selectionMode={dishSelectionMode}
-                    selected={selectedDishIds.has(dish.id)}
-                    onToggleSelect={() => toggleDishSelect(dish.id)}
-                  />
-                ))}
-            </div>
-          ))
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {sortedDishes.map((dish) => (
+              <DishCard
+                key={dish.id}
+                dish={dish}
+                compact
+                onDelete={dishSelectionMode ? undefined : () => handleDeleteDish(dish.id)}
+                onEdit={dishSelectionMode ? undefined : () => navigate(`/restaurant/${id}/dish/${dish.id}/edit`)}
+                selectionMode={dishSelectionMode}
+                selected={selectedDishIds.has(dish.id)}
+                onToggleSelect={() => toggleDishSelect(dish.id)}
+              />
+            ))}
+          </div>
         )}
 
         {/* Delete restaurant - small, at bottom */}
