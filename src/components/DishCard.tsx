@@ -72,7 +72,7 @@ export function DishCard({ dish, compact, onDelete, onEdit, selectionMode, selec
   };
 
   return (
-    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius)', marginBottom: 10, border: selected ? '2px solid var(--hot-pink)' : undefined }}>
+    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius)', marginBottom: compact ? 0 : 10, border: selected ? '2px solid var(--hot-pink)' : undefined }}>
       {/* Delete behind the card */}
       <div
         style={{

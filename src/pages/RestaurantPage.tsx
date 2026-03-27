@@ -17,6 +17,7 @@ import {
   CheckSquare,
   Share2,
   ArrowUpDown,
+  Sparkles,
 } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { DishCard } from '../components/DishCard';
@@ -41,9 +42,10 @@ export function RestaurantPage() {
   const [infoExpanded, setInfoExpanded] = useState(false);
   const [dishSelectionMode, setDishSelectionMode] = useState(false);
   const [selectedDishIds, setSelectedDishIds] = useState<Set<string>>(new Set());
-  const [dishTypeFilter, setDishTypeFilter] = useState<string | null>(null);
+  const [dishTypeFilters, setDishTypeFilters] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<'rating' | 'alpha'>('rating');
   const [sortReversed, setSortReversed] = useState(false);
+  const [wantToTryOnly, setWantToTryOnly] = useState(false);
 
   useEffect(() => {
     const r = restaurants.find((r) => r.id === id);
@@ -59,10 +61,18 @@ export function RestaurantPage() {
     }
   }, [id, getDishes]);
 
+  const hasWantToTry = useMemo(() => dishes.some((d) => d.want_to_try), [dishes]);
+
   const filteredDishes = useMemo(() => {
-    if (!dishTypeFilter) return dishes;
-    return dishes.filter((d) => d.dish_type === dishTypeFilter);
-  }, [dishes, dishTypeFilter]);
+    let result = dishes;
+    if (wantToTryOnly) {
+      result = result.filter((d) => d.want_to_try);
+    }
+    if (dishTypeFilters.size > 0) {
+      result = result.filter((d) => dishTypeFilters.has(d.dish_type));
+    }
+    return result;
+  }, [dishes, dishTypeFilters, wantToTryOnly]);
 
   const dishTypesPresent = useMemo(() => {
     const types = new Set(dishes.map((d) => d.dish_type));
@@ -219,12 +229,22 @@ export function RestaurantPage() {
 
         {/* Cuisine Tags */}
         {restaurant.cuisine_tags?.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+          <div className="filter-bar" style={{ padding: 0, gap: 4, marginTop: 10 }}>
             {restaurant.cuisine_tags.map((tag) => (
-              <span key={tag} className="chip" style={{ fontSize: 11, padding: '2px 10px' }}>
+              <button
+                key={tag}
+                className="chip"
+                style={{ fontSize: 11, padding: '2px 8px', whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer' }}
+                onClick={() => {
+                  const saved = JSON.parse(localStorage.getItem('nosh-notes-filters') || '{}');
+                  saved.selectedCuisine = tag;
+                  localStorage.setItem('nosh-notes-filters', JSON.stringify(saved));
+                  navigate('/');
+                }}
+              >
                 <Tag size={10} />
                 {tag}
-              </span>
+              </button>
             ))}
           </div>
         )}
@@ -317,7 +337,7 @@ export function RestaurantPage() {
         {/* Dishes Section */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <h2 style={{ fontFamily: "'Righteous', cursive", fontSize: 20, color: 'var(--hot-pink)' }}>
-            Dishes ({dishTypeFilter ? `${filteredDishes.length}/${dishes.length}` : dishes.length})
+            Dishes ({dishTypeFilters.size > 0 || wantToTryOnly ? `${filteredDishes.length}/${dishes.length}` : dishes.length})
           </h2>
           {dishes.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -333,6 +353,22 @@ export function RestaurantPage() {
                 <ArrowUpDown size={14} />
                 <span>{sortBy === 'rating' ? 'Rating' : 'A-Z'}{sortReversed ? ' ↑' : ' ↓'}</span>
               </button>
+              {hasWantToTry && (
+                <button
+                  onClick={() => setWantToTryOnly((v) => !v)}
+                  style={{
+                    background: 'none', border: 'none',
+                    color: wantToTryOnly ? 'var(--neon-pink)' : 'var(--text-muted)',
+                    padding: 4,
+                    display: 'flex', alignItems: 'center', gap: 3,
+                    fontSize: 11, fontFamily: "'Righteous', cursive",
+                  }}
+                  title="Show only Want to Try"
+                >
+                  <Sparkles size={14} />
+                  <span>Try</span>
+                </button>
+              )}
               <button
                 onClick={() => {
                   if (dishSelectionMode) exitDishSelectionMode();
@@ -348,20 +384,25 @@ export function RestaurantPage() {
 
         {/* Dish type filter */}
         {dishes.length > 0 && dishTypesPresent.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+          <div className="filter-bar" style={{ padding: 0, gap: 8, marginBottom: 10 }}>
             <button
-              className={`chip ${!dishTypeFilter ? 'active' : ''}`}
-              onClick={() => setDishTypeFilter(null)}
-              style={{ fontSize: 12, padding: '4px 12px' }}
+              className={`chip ${dishTypeFilters.size === 0 ? 'active' : ''}`}
+              onClick={() => setDishTypeFilters(new Set())}
+              style={{ fontSize: 12, padding: '5px 12px', whiteSpace: 'nowrap', flexShrink: 0 }}
             >
               All
             </button>
             {dishTypesPresent.map((t) => (
               <button
                 key={t.value}
-                className={`chip ${dishTypeFilter === t.value ? 'active' : ''}`}
-                onClick={() => setDishTypeFilter(dishTypeFilter === t.value ? null : t.value)}
-                style={{ fontSize: 12, padding: '4px 12px' }}
+                className={`chip ${dishTypeFilters.has(t.value) ? 'active' : ''}`}
+                onClick={() => setDishTypeFilters((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(t.value)) next.delete(t.value);
+                  else next.add(t.value);
+                  return next;
+                })}
+                style={{ fontSize: 12, padding: '5px 12px', whiteSpace: 'nowrap', flexShrink: 0 }}
               >
                 {t.label}
               </button>
@@ -412,7 +453,7 @@ export function RestaurantPage() {
             <p>Add your first dish to this restaurant</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {sortedDishes.map((dish) => (
               <DishCard
                 key={dish.id}
