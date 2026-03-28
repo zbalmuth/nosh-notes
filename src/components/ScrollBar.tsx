@@ -32,8 +32,7 @@ export function ScrollBar({ children, className, style }: Props) {
       fadeTimer = setTimeout(() => { track.style.opacity = '0.3'; }, 1200);
 
       const trackWidth = track.clientWidth;
-      const ratio = clientWidth / scrollWidth;
-      const tw = Math.max(24, ratio * trackWidth);
+      const tw = 28;
       const maxScroll = scrollWidth - clientWidth;
       const maxThumbLeft = trackWidth - tw;
       const left = maxScroll > 0 ? (scrollLeft / maxScroll) * maxThumbLeft : 0;
