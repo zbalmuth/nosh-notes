@@ -128,12 +128,12 @@ export function ScrollBar({ children, className, style }: Props) {
       <div
         ref={trackRef}
         style={{
-          marginTop: 8,
-          marginLeft: 20,
-          marginRight: 20,
-          height: 3,
-          borderRadius: 2,
-          background: 'rgba(255,255,255,0.08)',
+          marginTop: 6,
+          marginLeft: '25%',
+          marginRight: '25%',
+          height: 2,
+          borderRadius: 1,
+          background: 'transparent',
           position: 'relative',
           cursor: 'pointer',
           touchAction: 'none',
@@ -143,12 +143,12 @@ export function ScrollBar({ children, className, style }: Props) {
           ref={thumbRef}
           style={{
             position: 'absolute',
-            top: -3,
+            top: 0,
             left: 0,
-            height: 9,
-            borderRadius: 5,
+            height: 2,
+            borderRadius: 1,
             background: 'var(--hot-pink)',
-            opacity: 0.6,
+            opacity: 0.5,
             width: 30,
             cursor: 'grab',
             touchAction: 'none',
