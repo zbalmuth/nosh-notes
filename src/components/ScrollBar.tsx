@@ -27,8 +27,7 @@ export function ScrollBar({ children, className, style }: Props) {
 
       const trackWidth = track.clientWidth;
       const ratio = clientWidth / scrollWidth;
-      // Cap thumb between 20px and 40% of track
-      const tw = Math.max(20, Math.min(ratio * trackWidth, trackWidth * 0.4));
+      const tw = Math.max(30, Math.min(ratio * trackWidth, trackWidth * 0.35));
       const maxScroll = scrollWidth - clientWidth;
       const maxThumbLeft = trackWidth - tw;
       const left = maxScroll > 0 ? (scrollLeft / maxScroll) * maxThumbLeft : 0;
@@ -42,7 +41,6 @@ export function ScrollBar({ children, className, style }: Props) {
     const observer = new ResizeObserver(update);
     observer.observe(el);
 
-    // Click/tap on track to jump
     const jumpToPosition = (clientX: number) => {
       const rect = track.getBoundingClientRect();
       const clickX = clientX - rect.left;
@@ -53,12 +51,12 @@ export function ScrollBar({ children, className, style }: Props) {
     };
 
     const onTrackClick = (e: MouseEvent) => {
-      // Don't handle if it was a drag
       if (e.target === thumb) return;
       jumpToPosition(e.clientX);
     };
 
     const onTrackTouch = (e: TouchEvent) => {
+      if (e.target === thumb) return;
       e.preventDefault();
       jumpToPosition(e.touches[0].clientX);
     };
@@ -66,7 +64,7 @@ export function ScrollBar({ children, className, style }: Props) {
     track.addEventListener('click', onTrackClick);
     track.addEventListener('touchstart', onTrackTouch, { passive: false });
 
-    // Drag the thumb
+    // Thumb drag
     let dragging = false;
     let dragStartX = 0;
     let dragStartScroll = 0;
@@ -78,6 +76,7 @@ export function ScrollBar({ children, className, style }: Props) {
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
       dragStartX = clientX;
       dragStartScroll = el.scrollLeft;
+      thumb.style.cursor = 'grabbing';
       document.addEventListener('mousemove', onDragMove);
       document.addEventListener('mouseup', onDragEnd);
       document.addEventListener('touchmove', onDragMove, { passive: false });
@@ -100,6 +99,7 @@ export function ScrollBar({ children, className, style }: Props) {
 
     const onDragEnd = () => {
       dragging = false;
+      thumb.style.cursor = 'grab';
       document.removeEventListener('mousemove', onDragMove);
       document.removeEventListener('mouseup', onDragEnd);
       document.removeEventListener('touchmove', onDragMove);
@@ -128,13 +128,12 @@ export function ScrollBar({ children, className, style }: Props) {
       <div
         ref={trackRef}
         style={{
-          marginTop: 6,
+          marginTop: 8,
           marginLeft: 20,
           marginRight: 20,
-          height: 6,
-          borderRadius: 3,
-          background: 'var(--border)',
-          opacity: 0.3,
+          height: 3,
+          borderRadius: 2,
+          background: 'rgba(255,255,255,0.08)',
           position: 'relative',
           cursor: 'pointer',
           touchAction: 'none',
@@ -144,13 +143,13 @@ export function ScrollBar({ children, className, style }: Props) {
           ref={thumbRef}
           style={{
             position: 'absolute',
-            top: -2,
+            top: -3,
             left: 0,
-            height: 10,
+            height: 9,
             borderRadius: 5,
-            background: 'var(--text-muted)',
-            opacity: 0.8,
-            width: 20,
+            background: 'var(--hot-pink)',
+            opacity: 0.6,
+            width: 30,
             cursor: 'grab',
             touchAction: 'none',
           }}

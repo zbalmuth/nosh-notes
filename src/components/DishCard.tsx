@@ -18,6 +18,7 @@ export function DishCard({ dish, compact, onDelete, onEdit, selectionMode, selec
   const cardRef = useRef<HTMLDivElement>(null);
   const [swipeX, setSwipeX] = useState(0);
   const [swiping, setSwiping] = useState(false);
+  const swipeXRef = useRef(0);
   const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
   const touchStartX = useRef(0);
@@ -36,7 +37,6 @@ export function DishCard({ dish, compact, onDelete, onEdit, selectionMode, selec
     const deltaX = e.touches[0].clientX - touchStartX.current;
     const deltaY = e.touches[0].clientY - touchStartY.current;
 
-    // Determine swipe direction on first significant movement
     if (isHorizontalSwipe.current === null) {
       if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
         isHorizontalSwipe.current = Math.abs(deltaX) > Math.abs(deltaY);
@@ -46,46 +46,27 @@ export function DishCard({ dish, compact, onDelete, onEdit, selectionMode, selec
 
     if (!isHorizontalSwipe.current) return;
 
-    // Only allow swiping left
-    if (deltaX < 0) {
-      setSwipeX(Math.max(deltaX, -100));
-    } else {
-      setSwipeX(0);
-    }
+    const val = deltaX < 0 ? Math.max(deltaX, -150) : 0;
+    swipeXRef.current = val;
+    setSwipeX(val);
   };
 
   const handleTouchEnd = () => {
     setSwiping(false);
     isHorizontalSwipe.current = null;
-    if (swipeX < -80) {
-      setSwipeX(-100);
+    const currentSwipe = swipeXRef.current;
+    swipeXRef.current = 0;
+    setSwipeX(0);
+
+    if (currentSwipe < -80) {
       if (onDelete && confirm(`Delete "${dish.name}"?`)) {
         onDelete();
-      } else {
-        setSwipeX(0);
       }
-    } else {
-      setSwipeX(0);
     }
   };
 
   return (
-    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius)', marginBottom: compact ? 0 : 10, border: selected ? '2px solid var(--hot-pink)' : undefined }}>
-      {/* Red background revealed on swipe */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0, right: 0, bottom: 0,
-          width: 100,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#FF1744',
-          borderRadius: 'var(--radius)',
-        }}
-      >
-        <Trash2 size={20} color="white" />
-      </div>
-
-      {/* Card content */}
+    <div style={{ marginBottom: compact ? 0 : 10, border: selected ? '2px solid var(--hot-pink)' : undefined, borderRadius: 'var(--radius)' }}>
       <div
         ref={cardRef}
         className="card"
@@ -94,8 +75,6 @@ export function DishCard({ dish, compact, onDelete, onEdit, selectionMode, selec
           cursor: onEdit ? 'pointer' : 'default',
           transform: `translateX(${swipeX}px)`,
           transition: swiping ? 'none' : 'transform 0.2s ease-out',
-          position: 'relative',
-          zIndex: 1,
           borderLeft: compact && hasRating ? `3px solid ${getRatingColor(dish.rating!)}` : compact && dish.want_to_try ? '3px solid var(--neon-pink)' : undefined,
         }}
         onClick={() => {
