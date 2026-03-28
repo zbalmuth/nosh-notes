@@ -21,6 +21,7 @@ export function AddDishPage() {
   const { addDish, restaurants, showToast } = useApp();
   const scanFileRef = useRef<HTMLInputElement>(null);
   const photoFileRef = useRef<HTMLInputElement>(null);
+  const photoTouchStartX = useRef(0);
 
   const restaurant = restaurants.find((r) => r.id === restaurantId);
 
@@ -269,9 +270,19 @@ export function AddDishPage() {
         )}
       </div>
 
-      {/* Photo hero — touches bottom of banner, restaurant name overlays */}
+      {/* Photo hero — swipe to navigate, restaurant name overlays */}
       {activeTab === 'manual' && photos.length > 0 ? (
-        <div style={{ position: 'relative', height: 180, background: 'var(--bg-secondary)', overflow: 'hidden' }}>
+        <div
+          style={{ position: 'relative', height: 180, background: 'var(--bg-secondary)', overflow: 'hidden' }}
+          onTouchStart={(e) => { photoTouchStartX.current = e.touches[0].clientX; }}
+          onTouchEnd={(e) => {
+            const dx = e.changedTouches[0].clientX - photoTouchStartX.current;
+            if (Math.abs(dx) > 50) {
+              if (dx < 0 && photoViewIndex < photos.length - 1) setPhotoViewIndex((p) => p + 1);
+              if (dx > 0 && photoViewIndex > 0) setPhotoViewIndex((p) => p - 1);
+            }
+          }}
+        >
           <img
             src={photos[photoViewIndex]}
             alt="Dish photo"
@@ -303,15 +314,9 @@ export function AddDishPage() {
           >
             <X size={16} />
           </button>
-          {/* Dot indicators / swipe nav */}
+          {/* Dot indicators */}
           {photos.length > 1 && (
             <div style={{ position: 'absolute', bottom: 8, left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}>
-              <button
-                onClick={() => setPhotoViewIndex((prev) => (prev - 1 + photos.length) % photos.length)}
-                style={{ background: 'none', border: 'none', color: 'white', padding: 2 }}
-              >
-                <ChevronLeft size={18} />
-              </button>
               {photos.map((_, i) => (
                 <div
                   key={i}
@@ -322,12 +327,6 @@ export function AddDishPage() {
                   }}
                 />
               ))}
-              <button
-                onClick={() => setPhotoViewIndex((prev) => (prev + 1) % photos.length)}
-                style={{ background: 'none', border: 'none', color: 'white', padding: 2 }}
-              >
-                <ChevronRight size={18} />
-              </button>
             </div>
           )}
         </div>
