@@ -22,10 +22,15 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    // First try to restore and refresh the session
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session) {
+        // Force a token refresh to ensure we have a valid access token
+        const { data: { session: refreshed } } = await supabase.auth.refreshSession();
+        setSession(refreshed ?? session);
+        loadThemeFromServer();
+      }
       setLoading(false);
-      if (session) loadThemeFromServer();
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
