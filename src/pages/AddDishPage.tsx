@@ -89,7 +89,7 @@ export function AddDishPage() {
           result.dishes.map((d: { name: string; dish_type: string }) => ({
             name: d.name,
             dish_type: d.dish_type || 'entree',
-            action: 'want_to_try' as const,
+            action: 'ignore' as const,
             rating: 7,
           }))
         );
@@ -629,7 +629,7 @@ export function AddDishPage() {
                           const dishes = (result.dishes || []).map((d: { name: string; dish_type: string }) => ({
                             name: d.name,
                             dish_type: d.dish_type,
-                            action: 'want_to_try' as const,
+                            action: 'ignore' as const,
                             rating: 7,
                           }));
                           setUrlDishes(dishes);
@@ -654,7 +654,7 @@ export function AddDishPage() {
                         const dishes = (result.dishes || []).map((d: { name: string; dish_type: string }) => ({
                           name: d.name,
                           dish_type: d.dish_type,
-                          action: 'want_to_try' as const,
+                          action: 'ignore' as const,
                           rating: 7,
                         }));
                         setUrlDishes(dishes);
