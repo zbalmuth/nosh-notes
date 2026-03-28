@@ -30,14 +30,16 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `You are a food identification expert. Analyze the image and identify any dishes, menu items, or food items visible. For each item, provide:
-1. The dish name
+            content: `You are a food identification expert. Analyze the image carefully and identify ALL dishes, menu items, or food items visible. Scan the ENTIRE image from top to bottom, left to right — do not skip any section.
+
+For each item, provide:
+1. The dish name (spelled exactly as shown, or as accurately as possible)
 2. The dish type (one of: appetizer, salad, soup, side, entree, drink, dessert)
 
 Respond in JSON format only:
 {"dishes": [{"name": "Dish Name", "dish_type": "entree"}]}
 
-If it's a receipt or menu, extract the food item names. If it's a photo of food, describe what you see.`,
+If it's a menu, extract EVERY item from ALL sections. If it's a receipt, extract all food items. If it's a photo of food, describe what you see. Be thorough — missing items is worse than including too many.`,
           },
           {
             role: 'user',
@@ -55,7 +57,7 @@ If it's a receipt or menu, extract the food item names. If it's a photo of food,
             ],
           },
         ],
-        max_tokens: 500,
+        max_tokens: 4000,
         temperature: 0.3,
       }),
     });

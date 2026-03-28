@@ -80,15 +80,16 @@ serve(async (req) => {
         },
       ];
     } else if (contentType.includes('application/pdf')) {
-      // --- PDF MENU: Convert to base64, send as file to GPT-4o ---
-      // GPT-4o can read PDFs sent as images of pages, but for text-based PDFs
-      // we extract what we can and also send the URL for GPT's knowledge
+      // --- PDF MENU: Send as base64 image_url to GPT-4o vision ---
       const base64 = base64Encode(new Uint8Array(responseData!));
       messages = [
         { role: 'system', content: SYSTEM_PROMPT },
         {
           role: 'user',
-          content: `This is a PDF menu from ${url}. I couldn't render it directly, but based on your knowledge of this restaurant and URL, please extract all the dishes and drinks.`,
+          content: [
+            { type: 'text', text: `This is a PDF menu from ${url}. Extract ALL dishes and drinks from every section and page. Be thorough — do not skip any items.` },
+            { type: 'image_url', image_url: { url: `data:application/pdf;base64,${base64}` } },
+          ],
         },
       ];
     } else if (htmlText.length > 200) {
@@ -162,7 +163,7 @@ The page content could not be fetched. Based on your knowledge of this restauran
       body: JSON.stringify({
         model: 'gpt-4o',
         messages,
-        max_tokens: 3000,
+        max_tokens: 4096,
         temperature: 0.3,
       }),
     });
