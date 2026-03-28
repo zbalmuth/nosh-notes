@@ -81,9 +81,10 @@ export function AddRestaurantPage() {
       const data = await searchRestaurants(query, provider, searchLocation || undefined);
       setResults(data);
       if (data.length === 0) setSearchError('No results found. Try a different search.');
-    } catch (err) {
-      setSearchError('Search failed. Make sure the edge function is deployed.');
-      console.error(err);
+    } catch (err: any) {
+      const msg = err?.message || err?.context?.message || String(err);
+      setSearchError(`Search failed: ${msg}`);
+      console.error('Search error:', err);
     } finally {
       setSearching(false);
     }
