@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { DishCard } from '../components/DishCard';
+import { ScrollBar } from '../components/ScrollBar';
 import type { Restaurant, Dish } from '../types';
 import { DISH_TYPES } from '../types';
 
@@ -229,7 +230,7 @@ export function RestaurantPage() {
 
         {/* Cuisine Tags */}
         {restaurant.cuisine_tags?.length > 0 && (
-          <div className="filter-bar" style={{ padding: 0, gap: 4, marginTop: 10 }}>
+          <ScrollBar className="filter-bar" style={{ marginTop: 10 }}>
             {restaurant.cuisine_tags.map((tag) => (
               <button
                 key={tag}
@@ -246,7 +247,7 @@ export function RestaurantPage() {
                 {tag}
               </button>
             ))}
-          </div>
+          </ScrollBar>
         )}
 
         {/* Collapsible Contact & Info Section */}
@@ -384,7 +385,7 @@ export function RestaurantPage() {
 
         {/* Dish type filter */}
         {dishes.length > 0 && dishTypesPresent.length > 0 && (
-          <div className="filter-bar" style={{ padding: 0, gap: 8, marginBottom: 10 }}>
+          <ScrollBar className="filter-bar" style={{ marginBottom: 10 }}>
             <button
               className={`chip ${dishTypeFilters.size === 0 ? 'active' : ''}`}
               onClick={() => setDishTypeFilters(new Set())}
@@ -407,7 +408,7 @@ export function RestaurantPage() {
                 {t.label}
               </button>
             ))}
-          </div>
+          </ScrollBar>
         )}
 
         {/* Dish selection action bar */}

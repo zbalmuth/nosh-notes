@@ -483,8 +483,11 @@ a {
   display: flex;
   gap: 8px;
   padding: 12px 20px;
+  padding-bottom: 6px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  position: relative;
 }
 .filter-bar::-webkit-scrollbar {
   display: none;
@@ -547,7 +550,7 @@ a {
 .rating-slider {
   position: relative;
   width: 100%;
-  padding: 20px 0;
+  padding: 10px 0;
 }
 .rating-slider input[type="range"] {
   width: 100%;
@@ -589,7 +592,7 @@ textarea.input {
 
 /* Form groups */
 .form-group {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 .form-group label {
   display: block;

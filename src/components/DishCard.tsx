@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { getRatingLabel, getRatingColor } from '../types';
 import type { Dish } from '../types';
-import { Sparkles, Trash2 } from 'lucide-react';
+import { Sparkles, Trash2, X, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Props {
   dish: Dish;
@@ -18,6 +18,8 @@ export function DishCard({ dish, compact, onDelete, onEdit, selectionMode, selec
   const cardRef = useRef<HTMLDivElement>(null);
   const [swipeX, setSwipeX] = useState(0);
   const [swiping, setSwiping] = useState(false);
+  const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
+  const [photoIndex, setPhotoIndex] = useState(0);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const isHorizontalSwipe = useRef<boolean | null>(null);
@@ -135,9 +137,10 @@ export function DishCard({ dish, compact, onDelete, onEdit, selectionMode, selec
               <img
                 src={dish.photos[0]}
                 alt={dish.name}
+                onClick={(e) => { e.stopPropagation(); setPhotoIndex(0); setPhotoViewerOpen(true); }}
                 style={{
                   width: 36, height: 36, objectFit: 'cover',
-                  borderRadius: 6, flexShrink: 0,
+                  borderRadius: 6, flexShrink: 0, cursor: 'pointer',
                 }}
               />
             )}
@@ -279,9 +282,10 @@ export function DishCard({ dish, compact, onDelete, onEdit, selectionMode, selec
                 <img
                   src={dish.photos[0]}
                   alt={dish.name}
+                  onClick={(e) => { e.stopPropagation(); setPhotoIndex(0); setPhotoViewerOpen(true); }}
                   style={{
                     width: 56, height: 56, objectFit: 'cover',
-                    borderRadius: 8, border: '2px solid var(--border)',
+                    borderRadius: 8, border: '2px solid var(--border)', cursor: 'pointer',
                   }}
                 />
               )}
@@ -304,6 +308,54 @@ export function DishCard({ dish, compact, onDelete, onEdit, selectionMode, selec
           </div>
         )}
       </div>
+
+      {/* Photo viewer overlay */}
+      {photoViewerOpen && dish.photos?.length > 0 && (
+        <div
+          onClick={() => setPhotoViewerOpen(false)}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.9)', zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexDirection: 'column', gap: 12,
+          }}
+        >
+          <button
+            onClick={() => setPhotoViewerOpen(false)}
+            style={{
+              position: 'absolute', top: 16, right: 16,
+              background: 'none', border: 'none', color: 'white', padding: 8,
+            }}
+          >
+            <X size={24} />
+          </button>
+          <img
+            src={dish.photos[photoIndex]}
+            alt={dish.name}
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '90%', maxHeight: '75vh', objectFit: 'contain', borderRadius: 8 }}
+          />
+          {dish.photos.length > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); setPhotoIndex((prev) => (prev - 1 + dish.photos.length) % dish.photos.length); }}
+                style={{ background: 'none', border: 'none', color: 'white', padding: 8 }}
+              >
+                <ChevronLeft size={28} />
+              </button>
+              <span style={{ color: 'white', fontSize: 14, fontFamily: "'Righteous', cursive" }}>
+                {photoIndex + 1} / {dish.photos.length}
+              </span>
+              <button
+                onClick={(e) => { e.stopPropagation(); setPhotoIndex((prev) => (prev + 1) % dish.photos.length); }}
+                style={{ background: 'none', border: 'none', color: 'white', padding: 8 }}
+              >
+                <ChevronRight size={28} />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

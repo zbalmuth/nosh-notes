@@ -1,10 +1,11 @@
 import { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Camera, Loader, X, Check, Sparkles, Link } from 'lucide-react';
+import { ArrowLeft, Camera, Loader, X, Check, Sparkles, Link, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { RatingSlider } from '../components/RatingSlider';
-import { analyzeDishImage, analyzeMenuUrl } from '../lib/api';
-import { DISH_TYPES } from '../types';
+import { ScrollBar } from '../components/ScrollBar';
+import { analyzeDishImage, analyzeMenuUrl, uploadPhoto } from '../lib/api';
+import { DISH_TYPES, getRatingLabel, getRatingColor } from '../types';
 import type { DishType } from '../types';
 
 interface ScannedDish {
@@ -19,6 +20,7 @@ export function AddDishPage() {
   const navigate = useNavigate();
   const { addDish, restaurants, showToast } = useApp();
   const scanFileRef = useRef<HTMLInputElement>(null);
+  const photoFileRef = useRef<HTMLInputElement>(null);
 
   const restaurant = restaurants.find((r) => r.id === restaurantId);
 
@@ -31,6 +33,9 @@ export function AddDishPage() {
   const [wantToTry, setWantToTry] = useState(false);
   const [rating, setRating] = useState(7);
   const [notes, setNotes] = useState('');
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [photoViewIndex, setPhotoViewIndex] = useState(0);
+  const [photoFullscreen, setPhotoFullscreen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Scan state
@@ -109,10 +114,39 @@ export function AddDishPage() {
     );
   };
 
+  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (ev.target?.result) {
+        setPhotos((prev) => [...prev, ev.target!.result as string]);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
   const handleSaveManual = async () => {
     if (!name.trim() || !restaurantId) return;
     setSaving(true);
     try {
+      const uploadedPhotos: string[] = [];
+      for (const photo of photos) {
+        if (photo.startsWith('data:')) {
+          try {
+            const blob = await fetch(photo).then((r) => r.blob());
+            const file = new File([blob], `dish-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`, { type: 'image/jpeg' });
+            const url = await uploadPhoto(file, 'dish-photos', `${restaurantId}/${file.name}`);
+            uploadedPhotos.push(url);
+          } catch {
+            uploadedPhotos.push(photo);
+          }
+        } else {
+          uploadedPhotos.push(photo);
+        }
+      }
+
       await addDish({
         restaurant_id: restaurantId,
         name: name.trim(),
@@ -120,7 +154,7 @@ export function AddDishPage() {
         want_to_try: wantToTry,
         rating: wantToTry ? null : rating,
         notes,
-        photos: [],
+        photos: uploadedPhotos,
       });
       showToast('Dish added!');
       navigate(`/restaurant/${restaurantId}`);
@@ -163,6 +197,60 @@ export function AddDishPage() {
 
   return (
     <div>
+      {/* Hidden photo input */}
+      <input
+        ref={photoFileRef}
+        type="file"
+        accept="image/*"
+        onChange={handlePhotoCapture}
+        style={{ display: 'none' }}
+      />
+
+      {/* Photo fullscreen viewer */}
+      {photoFullscreen && photos.length > 0 && (
+        <div
+          onClick={() => setPhotoFullscreen(false)}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.9)', zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexDirection: 'column', gap: 12,
+          }}
+        >
+          <button
+            onClick={() => setPhotoFullscreen(false)}
+            style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'white', padding: 8 }}
+          >
+            <X size={24} />
+          </button>
+          <img
+            src={photos[photoViewIndex]}
+            alt="Dish photo"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '90%', maxHeight: '75vh', objectFit: 'contain', borderRadius: 8 }}
+          />
+          {photos.length > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); setPhotoViewIndex((prev) => (prev - 1 + photos.length) % photos.length); }}
+                style={{ background: 'none', border: 'none', color: 'white', padding: 8 }}
+              >
+                <ChevronLeft size={28} />
+              </button>
+              <span style={{ color: 'white', fontSize: 14, fontFamily: "'Righteous', cursive" }}>
+                {photoViewIndex + 1} / {photos.length}
+              </span>
+              <button
+                onClick={(e) => { e.stopPropagation(); setPhotoViewIndex((prev) => (prev + 1) % photos.length); }}
+                style={{ background: 'none', border: 'none', color: 'white', padding: 8 }}
+              >
+                <ChevronRight size={28} />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="page-header">
         <button
           onClick={() => navigate(-1)}
@@ -171,13 +259,83 @@ export function AddDishPage() {
           <ArrowLeft size={22} />
         </button>
         <h1 style={{ flex: 1 }}>Add Dish</h1>
+        {activeTab === 'manual' && (
+          <button
+            onClick={() => photoFileRef.current?.click()}
+            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', padding: 4 }}
+          >
+            <Camera size={20} />
+          </button>
+        )}
       </div>
 
-      {restaurant && (
+      {/* Photo hero — touches bottom of banner, restaurant name overlays */}
+      {activeTab === 'manual' && photos.length > 0 ? (
+        <div style={{ position: 'relative', height: 180, background: 'var(--bg-secondary)', overflow: 'hidden' }}>
+          <img
+            src={photos[photoViewIndex]}
+            alt="Dish photo"
+            onClick={() => setPhotoFullscreen(true)}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }}
+          />
+          {/* Restaurant name overlay */}
+          {restaurant && (
+            <div style={{
+              position: 'absolute', top: 10, left: 12,
+              background: 'rgba(0,0,0,0.5)', borderRadius: 8, padding: '3px 10px',
+            }}>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>at </span>
+              <strong style={{ fontSize: 12, color: 'white' }}>{restaurant.name}</strong>
+            </div>
+          )}
+          {/* Remove photo */}
+          <button
+            onClick={() => {
+              setPhotos((prev) => prev.filter((_, j) => j !== photoViewIndex));
+              setPhotoViewIndex((prev) => Math.max(0, Math.min(prev, photos.length - 2)));
+            }}
+            style={{
+              position: 'absolute', top: 10, right: 10,
+              background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '50%',
+              width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'white', cursor: 'pointer',
+            }}
+          >
+            <X size={16} />
+          </button>
+          {/* Dot indicators / swipe nav */}
+          {photos.length > 1 && (
+            <div style={{ position: 'absolute', bottom: 8, left: 0, right: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}>
+              <button
+                onClick={() => setPhotoViewIndex((prev) => (prev - 1 + photos.length) % photos.length)}
+                style={{ background: 'none', border: 'none', color: 'white', padding: 2 }}
+              >
+                <ChevronLeft size={18} />
+              </button>
+              {photos.map((_, i) => (
+                <div
+                  key={i}
+                  onClick={() => setPhotoViewIndex(i)}
+                  style={{
+                    width: 8, height: 8, borderRadius: '50%', cursor: 'pointer',
+                    background: i === photoViewIndex ? 'white' : 'rgba(255,255,255,0.4)',
+                  }}
+                />
+              ))}
+              <button
+                onClick={() => setPhotoViewIndex((prev) => (prev + 1) % photos.length)}
+                style={{ background: 'none', border: 'none', color: 'white', padding: 2 }}
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          )}
+        </div>
+      ) : restaurant ? (
         <div style={{ padding: '8px 20px', fontSize: 13, color: 'var(--text-muted)' }}>
           at <strong style={{ color: 'var(--text-primary)' }}>{restaurant.name}</strong>
         </div>
-      )}
+      ) : null}
 
       {/* Tabs */}
       <div className="provider-toggle" style={{ margin: '0 20px 4px' }}>
@@ -220,35 +378,36 @@ export function AddDishPage() {
             />
           </div>
 
-          {/* Dish Type */}
+          {/* Dish Type — scrollable strip */}
           <div className="form-group">
             <label>Dish Type</label>
-            <div className="dish-type-pills">
+            <ScrollBar className="filter-bar">
               {DISH_TYPES.map((type) => (
                 <button
                   key={type.value}
                   className={`dish-type-pill ${dishType === type.value ? 'active' : ''}`}
                   onClick={() => setDishType(type.value)}
+                  style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
                 >
                   {type.label}
                 </button>
               ))}
-            </div>
+            </ScrollBar>
           </div>
 
-          {/* Want to Try */}
+          {/* Want to Try + Rating in a compact section */}
           <div className="form-group">
             <div
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '12px 16px',
+                padding: '10px 14px',
                 background: wantToTry ? 'linear-gradient(135deg, var(--neon-pink), var(--cyan))' : 'var(--bg-secondary)',
                 borderRadius: 'var(--radius)', border: `2px solid ${wantToTry ? 'var(--cyan)' : 'var(--border)'}`,
                 cursor: 'pointer', transition: 'all 0.2s',
               }}
               onClick={() => setWantToTry(!wantToTry)}
             >
-              <span style={{ fontFamily: "'Righteous', cursive", fontSize: 15, color: wantToTry ? 'var(--white)' : 'var(--text-secondary)' }}>
+              <span style={{ fontFamily: "'Righteous', cursive", fontSize: 14, color: wantToTry ? 'var(--white)' : 'var(--text-secondary)' }}>
                 ✨ Want to Try
               </span>
               <div style={{ width: 44, height: 24, borderRadius: 12, background: wantToTry ? 'rgba(255,255,255,0.3)' : 'var(--border)', position: 'relative', transition: 'background 0.2s' }}>
@@ -260,7 +419,22 @@ export function AddDishPage() {
           {/* Rating */}
           {!wantToTry && (
             <div className="form-group">
-              <label>Rating</label>
+              <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 6 }}>
+                <label style={{ margin: 0, position: 'absolute', left: 0 }}>Rating</label>
+                <span style={{
+                  fontFamily: "'Righteous', cursive",
+                  fontSize: 13,
+                  color: getRatingColor(rating),
+                  background: `${getRatingColor(rating)}18`,
+                  padding: '2px 10px',
+                  borderRadius: 12,
+                  border: `1.5px solid ${getRatingColor(rating)}40`,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}>
+                  {getRatingLabel(rating)} {rating.toFixed(1)}
+                </span>
+              </div>
               <RatingSlider value={rating} onChange={setRating} />
             </div>
           )}
