@@ -71,6 +71,7 @@ export function ScrollBar({ children, className, style }: Props) {
           position: 'relative',
           opacity: 0.3,
           transition: 'opacity 0.4s',
+          pointerEvents: 'none',
         }}
       >
         <div
