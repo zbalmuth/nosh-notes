@@ -158,7 +158,7 @@ export function AddDishPage() {
         photos: uploadedPhotos,
       });
       showToast('Dish added!');
-      navigate(`/restaurant/${restaurantId}`);
+      navigate(`/restaurant/${restaurantId}`, { replace: true });
     } catch (err) {
       console.error('Failed to add dish', err);
     } finally {
@@ -188,7 +188,7 @@ export function AddDishPage() {
         });
       }
       showToast(`${toSave.length} dish${toSave.length > 1 ? 'es' : ''} added!`);
-      navigate(`/restaurant/${restaurantId}`);
+      navigate(`/restaurant/${restaurantId}`, { replace: true });
     } catch (err) {
       console.error('Failed to save scanned dishes', err);
     } finally {
@@ -456,7 +456,7 @@ export function AddDishPage() {
             onClick={handleSaveManual}
             disabled={!name.trim() || saving}
           >
-            {saving ? 'Saving...' : 'Add Dish'}
+            {saving ? <><Loader size={16} className="spin" /> Saving...</> : 'Add Dish'}
           </button>
         </div>
       )}
@@ -595,7 +595,7 @@ export function AddDishPage() {
                   disabled={savingScanned || scannedDishes.every((d) => d.action === 'ignore')}
                 >
                   {savingScanned
-                    ? 'Saving...'
+                    ? <><Loader size={16} className="spin" /> Saving...</>
                     : `Add ${scannedDishes.filter((d) => d.action !== 'ignore').length} Dish${scannedDishes.filter((d) => d.action !== 'ignore').length !== 1 ? 'es' : ''}`}
                 </button>
               </div>
@@ -766,11 +766,11 @@ export function AddDishPage() {
                     }
                     setSavingUrl(false);
                     showToast(`${toAdd.length} dish${toAdd.length !== 1 ? 'es' : ''} added!`);
-                    navigate(`/restaurant/${restaurantId}`);
+                    navigate(`/restaurant/${restaurantId}`, { replace: true });
                   }}
                 >
                   {savingUrl
-                    ? 'Saving...'
+                    ? <><Loader size={16} className="spin" /> Saving...</>
                     : `Add ${urlDishes.filter((d) => d.action !== 'ignore').length} Dish${urlDishes.filter((d) => d.action !== 'ignore').length !== 1 ? 'es' : ''}`}
                 </button>
               </div>

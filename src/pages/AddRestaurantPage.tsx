@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, Plus, Loader, X } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
@@ -6,6 +6,99 @@ import { searchRestaurants } from '../lib/api';
 import type { SearchResult, SearchProvider } from '../types';
 
 type Tab = 'search' | 'manual';
+
+function SearchResultCard({ result, onSelect, onDismiss }: { result: SearchResult; onSelect: () => void; onDismiss: () => void }) {
+  const [swipeX, setSwipeX] = useState(0);
+  const [swiping, setSwiping] = useState(false);
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const isHorizontalSwipe = useRef<boolean | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+    isHorizontalSwipe.current = null;
+    setSwiping(true);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!swiping) return;
+    const deltaX = e.touches[0].clientX - touchStartX.current;
+    const deltaY = e.touches[0].clientY - touchStartY.current;
+    if (isHorizontalSwipe.current === null) {
+      if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+        isHorizontalSwipe.current = Math.abs(deltaX) > Math.abs(deltaY);
+      }
+      return;
+    }
+    if (!isHorizontalSwipe.current) return;
+    if (deltaX < 0) setSwipeX(Math.max(deltaX, -100));
+    else setSwipeX(0);
+  };
+
+  const handleTouchEnd = () => {
+    setSwiping(false);
+    isHorizontalSwipe.current = null;
+    if (swipeX < -60) {
+      onDismiss();
+    } else {
+      setSwipeX(0);
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius)', marginBottom: 8 }}>
+      <div style={{
+        position: 'absolute', top: 0, right: 0, bottom: 0, width: 80,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--text-muted)', borderRadius: 'var(--radius)',
+      }}>
+        <X size={20} color="white" />
+      </div>
+      <div
+        className="card"
+        style={{
+          marginBottom: 0, cursor: 'pointer', position: 'relative', zIndex: 1,
+          transform: `translateX(${swipeX}px)`,
+          transition: swiping ? 'none' : 'transform 0.2s ease-out',
+        }}
+        onClick={() => { if (swipeX === 0) onSelect(); }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div style={{ display: 'flex', gap: 10 }}>
+          {result.image_url && (
+            <img
+              src={result.image_url}
+              alt={result.name}
+              style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8, border: '2px solid var(--border)' }}
+            />
+          )}
+          <div style={{ flex: 1 }}>
+            <h4 style={{ fontFamily: "'Righteous', cursive", fontSize: 14 }}>{result.name}</h4>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>{result.address}</p>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 4 }}>
+              {result.price_level && (
+                <span style={{ fontSize: 12, color: 'var(--palm-green)', fontWeight: 600 }}>{result.price_level}</span>
+              )}
+              {result.rating && (
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>★ {result.rating}</span>
+              )}
+            </div>
+            {result.cuisine_tags?.length > 0 && (
+              <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                {result.cuisine_tags.slice(0, 3).map((t) => (
+                  <span key={t} className="chip" style={{ fontSize: 10, padding: '2px 8px' }}>{t}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function AddRestaurantPage() {
   const navigate = useNavigate();
@@ -244,54 +337,12 @@ export function AddRestaurantPage() {
             {/* Results */}
             <div>
               {results.map((result) => (
-                <div
+                <SearchResultCard
                   key={result.id}
-                  className="card"
-                  style={{ marginBottom: 8, cursor: 'pointer' }}
-                  onClick={() => handleSelectResult(result)}
-                >
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    {result.image_url && (
-                      <img
-                        src={result.image_url}
-                        alt={result.name}
-                        style={{
-                          width: 56, height: 56, objectFit: 'cover',
-                          borderRadius: 8, border: '2px solid var(--border)',
-                        }}
-                      />
-                    )}
-                    <div style={{ flex: 1 }}>
-                      <h4 style={{ fontFamily: "'Righteous', cursive", fontSize: 14 }}>
-                        {result.name}
-                      </h4>
-                      <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        {result.address}
-                      </p>
-                      <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 4 }}>
-                        {result.price_level && (
-                          <span style={{ fontSize: 12, color: 'var(--palm-green)', fontWeight: 600 }}>
-                            {result.price_level}
-                          </span>
-                        )}
-                        {result.rating && (
-                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                            ★ {result.rating}
-                          </span>
-                        )}
-                      </div>
-                      {result.cuisine_tags?.length > 0 && (
-                        <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
-                          {result.cuisine_tags.slice(0, 3).map((t) => (
-                            <span key={t} className="chip" style={{ fontSize: 10, padding: '2px 8px' }}>
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  result={result}
+                  onSelect={() => handleSelectResult(result)}
+                  onDismiss={() => setResults((prev) => prev.filter((r) => r.id !== result.id))}
+                />
               ))}
             </div>
           </>
