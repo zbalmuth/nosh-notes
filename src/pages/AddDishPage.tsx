@@ -89,7 +89,7 @@ export function AddDishPage() {
           result.dishes.map((d: { name: string; dish_type: string }) => ({
             name: d.name,
             dish_type: d.dish_type || 'entree',
-            action: 'ignore' as const,
+            action: 'want_to_try' as const,
             rating: 7,
           }))
         );
