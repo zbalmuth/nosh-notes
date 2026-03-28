@@ -6,10 +6,8 @@ interface Props {
   style?: React.CSSProperties;
 }
 
-// Tiny indicator size (like bottom-of-the-barrel)
 const SMALL_W = 28;
 const SMALL_H = 2;
-// Expanded size when interacting
 const BIG_W = 40;
 const BIG_H = 6;
 
@@ -30,15 +28,13 @@ export function ScrollBar({ children, className, style }: Props) {
     const setSize = (big: boolean) => {
       if (big === expanded) return;
       expanded = big;
-      const w = big ? BIG_W : SMALL_W;
       const h = big ? BIG_H : SMALL_H;
       thumb.style.height = `${h}px`;
       thumb.style.borderRadius = `${h / 2}px`;
       thumb.style.top = `${-h / 2 + 1}px`;
       thumb.style.opacity = big ? '0.7' : '0.4';
-      thumb.style.transition = 'height 0.2s, top 0.2s, opacity 0.2s, border-radius 0.2s';
-      // Update position with new width
-      updatePosition(w);
+      thumb.style.transition = 'height 0.2s, top 0.2s, opacity 0.2s, border-radius 0.2s, width 0.2s';
+      updatePosition(big ? BIG_W : SMALL_W);
     };
 
     const scheduleShrink = () => {
@@ -64,12 +60,14 @@ export function ScrollBar({ children, className, style }: Props) {
       thumb.style.transform = `translateX(${left}px)`;
     };
 
+    const onScroll = () => updatePosition();
+
     updatePosition();
-    el.addEventListener('scroll', () => updatePosition(), { passive: true });
+    el.addEventListener('scroll', onScroll, { passive: true });
     const observer = new ResizeObserver(() => updatePosition());
     observer.observe(el);
 
-    // Click/tap on track area to expand and jump
+    // Tap anywhere in the hit area to expand + jump
     const jumpToPosition = (clientX: number) => {
       setSize(true);
       scheduleShrink();
@@ -140,7 +138,7 @@ export function ScrollBar({ children, className, style }: Props) {
     thumb.addEventListener('touchstart', onThumbDown, { passive: false });
 
     return () => {
-      el.removeEventListener('scroll', () => updatePosition());
+      el.removeEventListener('scroll', onScroll);
       observer.disconnect();
       track.removeEventListener('click', onTrackClick);
       track.removeEventListener('touchstart', onTrackTouch);
@@ -155,25 +153,36 @@ export function ScrollBar({ children, className, style }: Props) {
       <div ref={scrollRef} className={className}>
         {children}
       </div>
+      {/* Track: full width with padding to match content, tall hit area but visually tiny */}
       <div
         ref={trackRef}
         style={{
-          marginTop: 6,
-          marginLeft: '30%',
-          marginRight: '30%',
-          height: 2,
-          borderRadius: 1,
-          background: 'transparent',
+          marginTop: 2,
+          marginLeft: 20,
+          marginRight: 20,
+          height: 24,
           position: 'relative',
           cursor: 'pointer',
           touchAction: 'none',
+          display: 'flex',
+          alignItems: 'center',
         }}
       >
+        {/* Visible track line */}
+        <div style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          height: 1,
+          background: 'rgba(255,255,255,0.06)',
+          borderRadius: 1,
+        }} />
+        {/* Thumb */}
         <div
           ref={thumbRef}
           style={{
             position: 'absolute',
-            top: 0,
+            top: 11,
             left: 0,
             height: SMALL_H,
             borderRadius: 1,
