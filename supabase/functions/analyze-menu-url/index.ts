@@ -80,18 +80,44 @@ serve(async (req) => {
         },
       ];
     } else if (contentType.includes('application/pdf')) {
-      // --- PDF MENU: Send as base64 image_url to GPT-4o vision ---
+      // --- PDF MENU: Upload to OpenAI Files API, then reference in chat ---
       const base64 = base64Encode(new Uint8Array(responseData!));
-      messages = [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: `This is a PDF menu from ${url}. Extract ALL dishes and drinks from every section and page. Be thorough — do not skip any items.` },
-            { type: 'image_url', image_url: { url: `data:application/pdf;base64,${base64}` } },
-          ],
-        },
-      ];
+
+      // First upload the PDF to OpenAI
+      const formData = new FormData();
+      const pdfBlob = new Blob([new Uint8Array(responseData!)], { type: 'application/pdf' });
+      formData.append('file', pdfBlob, 'menu.pdf');
+      formData.append('purpose', 'assistants');
+
+      const uploadRes = await fetch('https://api.openai.com/v1/files', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: formData,
+      });
+      const uploadData = await uploadRes.json();
+
+      if (uploadData.id) {
+        // Use the file reference in the chat completion
+        messages = [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: `This is a PDF menu from ${url}. Extract ALL dishes and drinks from every section and page. Be thorough — do not skip any items.` },
+              { type: 'file', file: { file_id: uploadData.id } },
+            ],
+          },
+        ];
+      } else {
+        // Upload failed — fallback to asking GPT based on URL
+        messages = [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: `I want to know the menu items from this restaurant: ${url}\n\nThe PDF could not be processed. Based on your knowledge of this restaurant, provide the menu items you're aware of. If you don't know this restaurant, return {"dishes": [], "note": "Could not process the PDF menu. Try taking a photo instead."}`,
+          },
+        ];
+      }
     } else if (htmlText.length > 200) {
       // --- HTML PAGE: Strip and send as text ---
       let pageText = htmlText

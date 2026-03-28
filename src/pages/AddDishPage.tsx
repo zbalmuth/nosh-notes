@@ -523,7 +523,7 @@ export function AddDishPage() {
               </div>
 
               <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-                Tap an action for each dish: rate it, mark as want to try, or ignore.
+                Tap an action for each dish you want to add.
               </p>
 
               {scannedDishes.map((dish, i) => (
@@ -562,14 +562,6 @@ export function AddDishPage() {
                     >
                       <Sparkles size={12} />
                       Want to Try
-                    </button>
-                    <button
-                      className={`chip ${dish.action === 'ignore' ? '' : ''}`}
-                      onClick={() => updateScannedDish(i, { action: 'ignore' })}
-                      style={{ flex: 1, justifyContent: 'center', opacity: dish.action === 'ignore' ? 1 : 0.5 }}
-                    >
-                      <X size={12} />
-                      Skip
                     </button>
                   </div>
 
@@ -734,13 +726,6 @@ export function AddDishPage() {
                       style={{ flex: 1, justifyContent: 'center' }}
                     >
                       <Sparkles size={12} /> Want to Try
-                    </button>
-                    <button
-                      className={`chip ${dish.action === 'ignore' ? '' : ''}`}
-                      onClick={() => setUrlDishes((prev) => prev.map((d, j) => j === i ? { ...d, action: 'ignore' } : d))}
-                      style={{ flex: 1, justifyContent: 'center', opacity: dish.action === 'ignore' ? 1 : 0.5 }}
-                    >
-                      <X size={12} /> Skip
                     </button>
                   </div>
 
