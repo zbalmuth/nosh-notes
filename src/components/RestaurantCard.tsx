@@ -48,19 +48,16 @@ export function RestaurantCard({ restaurant, selectionMode, selected, onToggleSe
     }
   };
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = async () => {
     setSwiping(false);
     isHorizontalSwipe.current = null;
-    if (swipeX < -60) {
-      setSwipeX(-80);
-    } else {
-      setSwipeX(0);
-    }
-  };
-
-  const handleSwipeDelete = async () => {
-    if (confirm(`Delete "${restaurant.name}" and all its dishes?`)) {
-      await deleteRestaurant(restaurant.id);
+    if (swipeX < -80) {
+      setSwipeX(-100);
+      if (confirm(`Delete "${restaurant.name}" and all its dishes?`)) {
+        await deleteRestaurant(restaurant.id);
+      } else {
+        setSwipeX(0);
+      }
     } else {
       setSwipeX(0);
     }
@@ -68,18 +65,16 @@ export function RestaurantCard({ restaurant, selectionMode, selected, onToggleSe
 
   return (
     <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius)', marginBottom: 12 }}>
-      {/* Delete behind the card */}
+      {/* Red background revealed on swipe */}
       <div
         style={{
           position: 'absolute',
           top: 0, right: 0, bottom: 0,
-          width: 80,
+          width: 100,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: '#FF1744',
           borderRadius: 'var(--radius)',
-          cursor: 'pointer',
         }}
-        onClick={handleSwipeDelete}
       >
         <Trash2 size={20} color="white" />
       </div>

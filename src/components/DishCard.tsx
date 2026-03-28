@@ -57,17 +57,13 @@ export function DishCard({ dish, compact, onDelete, onEdit, selectionMode, selec
   const handleTouchEnd = () => {
     setSwiping(false);
     isHorizontalSwipe.current = null;
-    if (swipeX < -60) {
-      // Swiped far enough — show delete
-      setSwipeX(-80);
-    } else {
-      setSwipeX(0);
-    }
-  };
-
-  const handleSwipeDelete = () => {
-    if (onDelete && confirm(`Delete "${dish.name}"?`)) {
-      onDelete();
+    if (swipeX < -80) {
+      setSwipeX(-100);
+      if (onDelete && confirm(`Delete "${dish.name}"?`)) {
+        onDelete();
+      } else {
+        setSwipeX(0);
+      }
     } else {
       setSwipeX(0);
     }
@@ -75,22 +71,16 @@ export function DishCard({ dish, compact, onDelete, onEdit, selectionMode, selec
 
   return (
     <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius)', marginBottom: compact ? 0 : 10, border: selected ? '2px solid var(--hot-pink)' : undefined }}>
-      {/* Delete behind the card */}
+      {/* Red background revealed on swipe */}
       <div
         style={{
           position: 'absolute',
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: 80,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          top: 0, right: 0, bottom: 0,
+          width: 100,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: '#FF1744',
           borderRadius: 'var(--radius)',
-          cursor: 'pointer',
         }}
-        onClick={handleSwipeDelete}
       >
         <Trash2 size={20} color="white" />
       </div>

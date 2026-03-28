@@ -19,7 +19,7 @@ export function ScrollBar({ children, className, style }: Props) {
 
     const update = () => {
       const { scrollWidth, clientWidth, scrollLeft } = el;
-      if (scrollWidth <= clientWidth) {
+      if (scrollWidth <= clientWidth + 2) {
         track.style.display = 'none';
         return;
       }
@@ -27,7 +27,8 @@ export function ScrollBar({ children, className, style }: Props) {
 
       const trackWidth = track.clientWidth;
       const ratio = clientWidth / scrollWidth;
-      const tw = Math.max(20, ratio * trackWidth);
+      // Cap thumb between 20px and 40% of track
+      const tw = Math.max(20, Math.min(ratio * trackWidth, trackWidth * 0.4));
       const maxScroll = scrollWidth - clientWidth;
       const maxThumbLeft = trackWidth - tw;
       const left = maxScroll > 0 ? (scrollLeft / maxScroll) * maxThumbLeft : 0;
@@ -37,25 +38,85 @@ export function ScrollBar({ children, className, style }: Props) {
     };
 
     update();
-    el.addEventListener('scroll', update);
+    el.addEventListener('scroll', update, { passive: true });
     const observer = new ResizeObserver(update);
     observer.observe(el);
 
-    // Track click to jump
-    const onTrackClick = (e: MouseEvent) => {
+    // Click/tap on track to jump
+    const jumpToPosition = (clientX: number) => {
       const rect = track.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
+      const clickX = clientX - rect.left;
       const trackWidth = track.clientWidth;
-      const { scrollWidth, clientWidth } = el;
-      const maxScroll = scrollWidth - clientWidth;
+      const { scrollWidth, clientWidth: cw } = el;
+      const maxScroll = scrollWidth - cw;
       el.scrollTo({ left: (clickX / trackWidth) * maxScroll, behavior: 'smooth' });
     };
+
+    const onTrackClick = (e: MouseEvent) => {
+      // Don't handle if it was a drag
+      if (e.target === thumb) return;
+      jumpToPosition(e.clientX);
+    };
+
+    const onTrackTouch = (e: TouchEvent) => {
+      e.preventDefault();
+      jumpToPosition(e.touches[0].clientX);
+    };
+
     track.addEventListener('click', onTrackClick);
+    track.addEventListener('touchstart', onTrackTouch, { passive: false });
+
+    // Drag the thumb
+    let dragging = false;
+    let dragStartX = 0;
+    let dragStartScroll = 0;
+
+    const onThumbDown = (e: MouseEvent | TouchEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragging = true;
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      dragStartX = clientX;
+      dragStartScroll = el.scrollLeft;
+      document.addEventListener('mousemove', onDragMove);
+      document.addEventListener('mouseup', onDragEnd);
+      document.addEventListener('touchmove', onDragMove, { passive: false });
+      document.addEventListener('touchend', onDragEnd);
+    };
+
+    const onDragMove = (e: MouseEvent | TouchEvent) => {
+      if (!dragging) return;
+      e.preventDefault();
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const deltaX = clientX - dragStartX;
+      const trackWidth = track.clientWidth;
+      const tw = thumb.clientWidth;
+      const maxThumbLeft = trackWidth - tw;
+      const { scrollWidth, clientWidth: cw } = el;
+      const maxScroll = scrollWidth - cw;
+      const scrollDelta = maxThumbLeft > 0 ? (deltaX / maxThumbLeft) * maxScroll : 0;
+      el.scrollLeft = dragStartScroll + scrollDelta;
+    };
+
+    const onDragEnd = () => {
+      dragging = false;
+      document.removeEventListener('mousemove', onDragMove);
+      document.removeEventListener('mouseup', onDragEnd);
+      document.removeEventListener('touchmove', onDragMove);
+      document.removeEventListener('touchend', onDragEnd);
+    };
+
+    thumb.addEventListener('mousedown', onThumbDown);
+    thumb.addEventListener('touchstart', onThumbDown, { passive: false });
 
     return () => {
       el.removeEventListener('scroll', update);
       observer.disconnect();
       track.removeEventListener('click', onTrackClick);
+      track.removeEventListener('touchstart', onTrackTouch);
+      thumb.removeEventListener('mousedown', onThumbDown);
+      thumb.removeEventListener('touchstart', onThumbDown);
+      onDragEnd();
     };
   }, [children]);
 
@@ -70,25 +131,28 @@ export function ScrollBar({ children, className, style }: Props) {
           marginTop: 6,
           marginLeft: 20,
           marginRight: 20,
-          height: 4,
-          borderRadius: 2,
+          height: 6,
+          borderRadius: 3,
           background: 'var(--border)',
           opacity: 0.3,
           position: 'relative',
           cursor: 'pointer',
+          touchAction: 'none',
         }}
       >
         <div
           ref={thumbRef}
           style={{
             position: 'absolute',
-            top: 0,
+            top: -2,
             left: 0,
-            height: 4,
-            borderRadius: 2,
+            height: 10,
+            borderRadius: 5,
             background: 'var(--text-muted)',
             opacity: 0.8,
             width: 20,
+            cursor: 'grab',
+            touchAction: 'none',
           }}
         />
       </div>
