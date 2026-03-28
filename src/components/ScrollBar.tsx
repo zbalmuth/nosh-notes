@@ -6,6 +6,13 @@ interface Props {
   style?: React.CSSProperties;
 }
 
+// Tiny indicator size (like bottom-of-the-barrel)
+const SMALL_W = 28;
+const SMALL_H = 2;
+// Expanded size when interacting
+const BIG_W = 40;
+const BIG_H = 6;
+
 export function ScrollBar({ children, className, style }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const thumbRef = useRef<HTMLDivElement>(null);
@@ -17,7 +24,29 @@ export function ScrollBar({ children, className, style }: Props) {
     const track = trackRef.current;
     if (!el || !thumb || !track) return;
 
-    const update = () => {
+    let expanded = false;
+    let shrinkTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const setSize = (big: boolean) => {
+      if (big === expanded) return;
+      expanded = big;
+      const w = big ? BIG_W : SMALL_W;
+      const h = big ? BIG_H : SMALL_H;
+      thumb.style.height = `${h}px`;
+      thumb.style.borderRadius = `${h / 2}px`;
+      thumb.style.top = `${-h / 2 + 1}px`;
+      thumb.style.opacity = big ? '0.7' : '0.4';
+      thumb.style.transition = 'height 0.2s, top 0.2s, opacity 0.2s, border-radius 0.2s';
+      // Update position with new width
+      updatePosition(w);
+    };
+
+    const scheduleShrink = () => {
+      if (shrinkTimer) clearTimeout(shrinkTimer);
+      shrinkTimer = setTimeout(() => setSize(false), 1500);
+    };
+
+    const updatePosition = (tw?: number) => {
       const { scrollWidth, clientWidth, scrollLeft } = el;
       if (scrollWidth <= clientWidth + 2) {
         track.style.display = 'none';
@@ -25,23 +54,25 @@ export function ScrollBar({ children, className, style }: Props) {
       }
       track.style.display = 'block';
 
+      const w = tw ?? (expanded ? BIG_W : SMALL_W);
       const trackWidth = track.clientWidth;
-      const ratio = clientWidth / scrollWidth;
-      const tw = Math.max(30, Math.min(ratio * trackWidth, trackWidth * 0.35));
       const maxScroll = scrollWidth - clientWidth;
-      const maxThumbLeft = trackWidth - tw;
+      const maxThumbLeft = trackWidth - w;
       const left = maxScroll > 0 ? (scrollLeft / maxScroll) * maxThumbLeft : 0;
 
-      thumb.style.width = `${tw}px`;
+      thumb.style.width = `${w}px`;
       thumb.style.transform = `translateX(${left}px)`;
     };
 
-    update();
-    el.addEventListener('scroll', update, { passive: true });
-    const observer = new ResizeObserver(update);
+    updatePosition();
+    el.addEventListener('scroll', () => updatePosition(), { passive: true });
+    const observer = new ResizeObserver(() => updatePosition());
     observer.observe(el);
 
+    // Click/tap on track area to expand and jump
     const jumpToPosition = (clientX: number) => {
+      setSize(true);
+      scheduleShrink();
       const rect = track.getBoundingClientRect();
       const clickX = clientX - rect.left;
       const trackWidth = track.clientWidth;
@@ -54,7 +85,6 @@ export function ScrollBar({ children, className, style }: Props) {
       if (e.target === thumb) return;
       jumpToPosition(e.clientX);
     };
-
     const onTrackTouch = (e: TouchEvent) => {
       if (e.target === thumb) return;
       e.preventDefault();
@@ -73,10 +103,11 @@ export function ScrollBar({ children, className, style }: Props) {
       e.preventDefault();
       e.stopPropagation();
       dragging = true;
+      setSize(true);
+      if (shrinkTimer) clearTimeout(shrinkTimer);
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
       dragStartX = clientX;
       dragStartScroll = el.scrollLeft;
-      thumb.style.cursor = 'grabbing';
       document.addEventListener('mousemove', onDragMove);
       document.addEventListener('mouseup', onDragEnd);
       document.addEventListener('touchmove', onDragMove, { passive: false });
@@ -89,8 +120,7 @@ export function ScrollBar({ children, className, style }: Props) {
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
       const deltaX = clientX - dragStartX;
       const trackWidth = track.clientWidth;
-      const tw = thumb.clientWidth;
-      const maxThumbLeft = trackWidth - tw;
+      const maxThumbLeft = trackWidth - BIG_W;
       const { scrollWidth, clientWidth: cw } = el;
       const maxScroll = scrollWidth - cw;
       const scrollDelta = maxThumbLeft > 0 ? (deltaX / maxThumbLeft) * maxScroll : 0;
@@ -99,7 +129,7 @@ export function ScrollBar({ children, className, style }: Props) {
 
     const onDragEnd = () => {
       dragging = false;
-      thumb.style.cursor = 'grab';
+      scheduleShrink();
       document.removeEventListener('mousemove', onDragMove);
       document.removeEventListener('mouseup', onDragEnd);
       document.removeEventListener('touchmove', onDragMove);
@@ -110,13 +140,13 @@ export function ScrollBar({ children, className, style }: Props) {
     thumb.addEventListener('touchstart', onThumbDown, { passive: false });
 
     return () => {
-      el.removeEventListener('scroll', update);
+      el.removeEventListener('scroll', () => updatePosition());
       observer.disconnect();
       track.removeEventListener('click', onTrackClick);
       track.removeEventListener('touchstart', onTrackTouch);
       thumb.removeEventListener('mousedown', onThumbDown);
       thumb.removeEventListener('touchstart', onThumbDown);
-      onDragEnd();
+      if (shrinkTimer) clearTimeout(shrinkTimer);
     };
   }, [children]);
 
@@ -129,8 +159,8 @@ export function ScrollBar({ children, className, style }: Props) {
         ref={trackRef}
         style={{
           marginTop: 6,
-          marginLeft: '25%',
-          marginRight: '25%',
+          marginLeft: '30%',
+          marginRight: '30%',
           height: 2,
           borderRadius: 1,
           background: 'transparent',
@@ -145,11 +175,11 @@ export function ScrollBar({ children, className, style }: Props) {
             position: 'absolute',
             top: 0,
             left: 0,
-            height: 2,
+            height: SMALL_H,
             borderRadius: 1,
             background: 'var(--hot-pink)',
-            opacity: 0.5,
-            width: 30,
+            opacity: 0.4,
+            width: SMALL_W,
             cursor: 'grab',
             touchAction: 'none',
           }}
