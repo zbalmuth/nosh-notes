@@ -26,20 +26,22 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
-            content: `You are a food identification expert. Analyze the image carefully and identify ALL dishes, menu items, or food items visible. Scan the ENTIRE image from top to bottom, left to right — do not skip any section.
+            content: `You are a food identification expert. Identify ONLY actual food items, dishes, and beverages — nothing else. Ignore utensils, plates, napkins, furniture, people, decor, prices, taxes, service charges, and any non-food objects.
 
-For each item, provide:
-1. The dish name (spelled exactly as shown, or as accurately as possible)
+For each food/drink item, provide:
+1. The item name (as shown on any menu/receipt, or a clear description)
 2. The dish type (one of: appetizer, salad, soup, side, entree, drink, dessert)
 
-Respond in JSON format only:
+If the image shows a menu or receipt, extract every food line item. If it shows actual food/dishes, describe what you see.
+
+Respond ONLY in this exact JSON format with no other text:
 {"dishes": [{"name": "Dish Name", "dish_type": "entree"}]}
 
-If it's a menu, extract EVERY item from ALL sections. If it's a receipt, extract all food items. If it's a photo of food, describe what you see. Be thorough — missing items is worse than including too many.`,
+If no food items are visible, respond: {"dishes": []}`,
           },
           {
             role: 'user',
@@ -52,20 +54,19 @@ If it's a menu, extract EVERY item from ALL sections. If it's a receipt, extract
               },
               {
                 type: 'text',
-                text: 'What dishes or food items do you see? Respond in JSON format.',
+                text: 'List all food items and dishes. JSON only.',
               },
             ],
           },
         ],
-        max_tokens: 4000,
-        temperature: 0.3,
+        max_tokens: 600,
+        temperature: 0.1,
       }),
     });
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '{"dishes": []}';
 
-    // Parse JSON from the response (handle markdown code blocks)
     let parsed;
     try {
       const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();

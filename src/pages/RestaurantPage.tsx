@@ -170,8 +170,14 @@ export function RestaurantPage() {
     return <div className="loading-spinner" style={{ marginTop: 60 }} />;
   }
 
-  const hasContactInfo = restaurant.phone || restaurant.website || restaurant.yelp_url || restaurant.google_url || restaurant.menu_url;
-  const hasLinks = restaurant.website || restaurant.yelp_url || restaurant.google_url || restaurant.menu_url;
+  // Use stored Yelp URL if available, otherwise build a search URL as fallback
+  const yelpUrl = restaurant.yelp_url || (() => {
+    const loc = [restaurant.city, restaurant.state].filter(Boolean).join(', ');
+    return `https://www.yelp.com/search?find_desc=${encodeURIComponent(restaurant.name)}&find_loc=${encodeURIComponent(loc)}`;
+  })();
+
+  const hasContactInfo = restaurant.phone || restaurant.website || yelpUrl || restaurant.google_url || restaurant.menu_url;
+  const hasLinks = restaurant.website || yelpUrl || restaurant.google_url || restaurant.menu_url;
 
   return (
     <div>
@@ -226,6 +232,15 @@ export function RestaurantPage() {
           {restaurant.external_rating && (
             <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>★ {restaurant.external_rating}</span>
           )}
+          <a
+            href={yelpUrl}
+            target="_blank"
+            rel="noopener"
+            className="link-chip"
+            style={{ fontSize: 12, padding: '3px 10px' }}
+          >
+            <ExternalLink size={12} /> Yelp
+          </a>
         </div>
 
         {/* Cuisine Tags */}
@@ -307,11 +322,9 @@ export function RestaurantPage() {
                         <ExternalLink size={14} /> Google
                       </a>
                     )}
-                    {restaurant.yelp_url && (
-                      <a href={restaurant.yelp_url} target="_blank" rel="noopener" className="link-chip">
-                        <ExternalLink size={14} /> Yelp
-                      </a>
-                    )}
+                    <a href={yelpUrl} target="_blank" rel="noopener" className="link-chip">
+                      <ExternalLink size={14} /> Yelp
+                    </a>
                   </div>
                 )}
               </div>
