@@ -63,9 +63,22 @@ workflows:
 
       - name: Verify signing identity
         script: |
-          echo "=== Valid signing identities ==="
+          echo "=== Signing identities in keychain ==="
           security find-identity -v -p codesigning
-          echo "=== PROFILE_UUID: $PROFILE_UUID ==="
+          echo ""
+          echo "=== PROFILE_UUID: '$PROFILE_UUID' ==="
+          echo ""
+          PROFILE_PATH="$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "=== Profile bundle ID ==="
+          security cms -D -i "$PROFILE_PATH" \
+            | plutil -extract 'Entitlements.application-identifier' raw - 2>/dev/null \
+            || echo "(could not read profile)"
+          echo ""
+          # Fail here — not 2 steps later — if cert or profile is missing
+          security find-identity -v -p codesigning | grep -q "Apple Distribution" \
+            || { echo "FATAL: No Apple Distribution cert in keychain — check CM_CERTIFICATE in ios_signing group"; exit 1; }
+          [ -n "$PROFILE_UUID" ] \
+            || { echo "FATAL: PROFILE_UUID is empty — CM_PROVISIONING_PROFILE decode failed"; exit 1; }
 
       - name: Build iOS IPA
         script: |
