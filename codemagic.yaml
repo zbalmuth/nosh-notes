@@ -93,9 +93,3 @@ workflows:
       app_store_connect:
         auth: integration          # uses the "Sous Chefs" integration above
         submit_to_testflight: true
-      email:
-        recipients:
-          - $CM_COMMIT_EMAIL       # notifies the committer; remove if unwanted
-        notify:
-          success: true
-          failure: true
