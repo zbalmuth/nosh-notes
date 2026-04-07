@@ -22,14 +22,14 @@ workflows:
       - name: Install npm dependencies
         script: npm install --legacy-peer-deps
 
-      - name: Generate app icons
-        script: npx @capacitor/assets generate --ios
-
       - name: Capacitor sync
         script: |
           [ -d ios ] || npx cap add ios
           mkdir -p out
           npx cap sync ios
+
+      - name: Generate app icons
+        script: npx @capacitor/assets generate --ios
 
       - name: Patch iOS project files
         script: |
