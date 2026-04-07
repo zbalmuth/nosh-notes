@@ -1,0 +1,5 @@
+# Force LF in CI-consumed files so backslash line-continuations in bash
+# scripts embedded in YAML aren't broken by Windows CRLF conversion.
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.sh    text eol=lf
