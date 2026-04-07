@@ -61,6 +61,12 @@ workflows:
           mv "$PROFILE_DIR/profile.mobileprovision" "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
           echo "PROFILE_UUID=$PROFILE_UUID" >> $CM_ENV
 
+      - name: Verify signing identity
+        script: |
+          echo "=== Valid signing identities ==="
+          security find-identity -v -p codesigning
+          echo "=== PROFILE_UUID: $PROFILE_UUID ==="
+
       - name: Build iOS IPA
         script: |
           ARCHIVE_PATH="/tmp/App.xcarchive"
@@ -88,6 +94,7 @@ workflows:
             -destination "generic/platform=iOS" \
             -archivePath "$ARCHIVE_PATH" \
             CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=9CL2835GC5 \
             PROVISIONING_PROFILE="$PROFILE_UUID" \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             COMPILER_INDEX_STORE_ENABLE=NO
