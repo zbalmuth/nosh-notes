@@ -28,7 +28,7 @@ jobs:
             -H "x-auth-token: ${{ secrets.CODEMAGIC_API_TOKEN }}" \
             -d '{
               "appId":     "${{ secrets.CODEMAGIC_APP_ID }}",
-              "workflowId": "ios-distribution",
+              "workflowId": "ios-testflight",
               "branch":    "master"
             }' \
             https://api.codemagic.io/builds)
