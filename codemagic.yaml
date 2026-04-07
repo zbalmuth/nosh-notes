@@ -1,22 +1,9 @@
 workflows:
-  ios-distribution:
-    name: Nosh Notes → TestFlight
+  ios-testflight:
+    name: Nosh Notes iOS → TestFlight
     max_build_duration: 60
-    instance_type: mac_mini_m2
-
-    environment:
-      groups:
-        # Contains: CM_CERTIFICATE, CM_CERTIFICATE_PASSWORD, CM_PROVISIONING_PROFILE
-        - ios_signing
-      vars:
-        BUNDLE_ID: com.zbalmuth.noshnotes
-        XCODE_WORKSPACE: ios/App/App.xcworkspace
-        XCODE_SCHEME: App
-      node: v22
-      xcode: latest
-
     integrations:
-      app_store_connect: Sous Chefs   # your existing ASC API key integration
+      app_store_connect: Sous Chefs
 
     triggering:
       events:
@@ -25,71 +12,96 @@ workflows:
         - pattern: master
           include: true
 
+    environment:
+      groups:
+        - ios_signing
+      node: 22
+      xcode: latest
+
     scripts:
       - name: Install npm dependencies
-        script: npm ci
+        script: npm install --legacy-peer-deps
 
-      - name: Add iOS platform (only on first run; skipped if ios/ is already committed)
+      - name: Generate app icons
+        script: npx @capacitor/assets generate --ios
+
+      - name: Capacitor sync
         script: |
-          if [ ! -d ios ]; then
-            npx cap add ios
-          fi
-          # Ensure the dist stub exists so cap sync doesn't warn on a live-URL build
-          mkdir -p dist
+          [ -d ios ] || npx cap add ios
+          mkdir -p out
+          npx cap sync ios
 
-      - name: Sync Capacitor
-        script: npx cap sync ios
-
-      - name: Patch Info.plist – usage descriptions
+      - name: Patch iOS project files
         script: |
+          # Info.plist — mark app as not using non-exempt encryption (required for App Store)
           PLIST="ios/App/App/Info.plist"
-          # Camera
-          /usr/libexec/PlistBuddy -c \
-            "Add :NSCameraUsageDescription string 'Used to photograph food'" "$PLIST" 2>/dev/null || \
-          /usr/libexec/PlistBuddy -c \
-            "Set :NSCameraUsageDescription 'Used to photograph food'" "$PLIST"
-          # Photo library read
-          /usr/libexec/PlistBuddy -c \
-            "Add :NSPhotoLibraryUsageDescription string 'Used to select food photos'" "$PLIST" 2>/dev/null || \
-          /usr/libexec/PlistBuddy -c \
-            "Set :NSPhotoLibraryUsageDescription 'Used to select food photos'" "$PLIST"
-          # Photo library write
-          /usr/libexec/PlistBuddy -c \
-            "Add :NSPhotoLibraryAddUsageDescription string 'Used to save food photos'" "$PLIST" 2>/dev/null || \
-          /usr/libexec/PlistBuddy -c \
-            "Set :NSPhotoLibraryAddUsageDescription 'Used to save food photos'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST"
 
-      - name: Set up keychain
-        script: keychain initialize
+          # project.pbxproj — force manual signing + correct bundle ID for Debug & Release
+          PBXPROJ="ios/App/App.xcodeproj/project.pbxproj"
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ"
+          sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = com.zbalmuth.noshnotes;/g' "$PBXPROJ"
 
-      - name: Install provisioning profile
+      - name: Set up manual code signing
         script: |
-          PROFILES_HOME="$HOME/Library/MobileDevice/Provisioning Profiles"
-          mkdir -p "$PROFILES_HOME"
-          PROFILE_PATH="$(mktemp "$PROFILES_HOME"/$(uuidgen).mobileprovision)"
-          echo "${CM_PROVISIONING_PROFILE}" | base64 --decode > "$PROFILE_PATH"
-          echo "Installed provisioning profile: $PROFILE_PATH"
+          keychain initialize
+          CERT_PATH="/tmp/certificate.p12"
+          printf '%s' "$CM_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" \
+            -P "$CM_CERTIFICATE_PASSWORD" \
+            -A -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k ""
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_DIR"
+          echo "$CM_PROVISIONING_PROFILE" | base64 --decode > "$PROFILE_DIR/profile.mobileprovision"
+          PROFILE_UUID=$(security cms -D -i "$PROFILE_DIR/profile.mobileprovision" | plutil -extract UUID raw -)
+          mv "$PROFILE_DIR/profile.mobileprovision" "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> $CM_ENV
 
-      - name: Install signing certificate
+      - name: Build iOS IPA
         script: |
-          echo "${CM_CERTIFICATE}" | base64 --decode > /tmp/cert.p12
-          keychain add-certificates \
-            --certificate /tmp/cert.p12 \
-            --certificate-password "${CM_CERTIFICATE_PASSWORD}"
-
-      - name: Apply profiles & build IPA
-        script: |
-          xcode-project use-profiles
-          xcode-project build-ipa \
-            --workspace "$XCODE_WORKSPACE" \
-            --scheme "$XCODE_SCHEME"
+          ARCHIVE_PATH="/tmp/App.xcarchive"
+          IPA_DIR="/tmp/ipa"
+          (cd ios/App && agvtool new-version -all "$BUILD_NUMBER")
+          cat > "/tmp/ExportOptions.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store</string>
+            <key>teamID</key><string>9CL2835GC5</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.zbalmuth.noshnotes</key>
+              <string>$PROFILE_UUID</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild archive \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -destination "generic/platform=iOS" \
+            -archivePath "$ARCHIVE_PATH" \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE="$PROFILE_UUID" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            COMPILER_INDEX_STORE_ENABLE=NO
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$IPA_DIR" \
+            -exportOptionsPlist "/tmp/ExportOptions.plist"
 
     artifacts:
-      - build/ios/ipa/*.ipa
+      - /tmp/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
 
     publishing:
       app_store_connect:
-        auth: integration          # uses the "Sous Chefs" integration above
+        auth: integration
         submit_to_testflight: true
+        submit_to_app_store: false
