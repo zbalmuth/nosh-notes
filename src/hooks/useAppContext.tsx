@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import * as api from '../lib/api';
 import type { Restaurant, RestaurantList, Dish } from '../types';
 import { Loader, Check } from 'lucide-react';
+import { sendNotification } from '../lib/notifications';
 
 interface ImportProgress {
   total: number;
@@ -134,10 +135,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Background import: kicks off async loop without blocking navigation
   const startBackgroundImport = useCallback((items: Partial<Dish>[], restaurantName: string) => {
     if (items.length === 0) return;
-    // Request notification permission up front so we can alert when done
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
     (async () => {
       setImportProgress({ total: items.length, done: 0, restaurantName, status: 'running', currentDishName: items[0]?.name });
       let done = 0;
@@ -152,12 +149,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setImportProgress({ total: items.length, done: items.length, restaurantName, status: 'done' });
       showToast(`${items.length} dish${items.length !== 1 ? 'es' : ''} added!`);
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        new Notification('Import complete!', {
-          body: `${items.length} dish${items.length !== 1 ? 'es' : ''} added to ${restaurantName}`,
-          icon: '/icon-192.png',
-        });
-      }
+      await sendNotification(
+        'Import complete!',
+        `${items.length} dish${items.length !== 1 ? 'es' : ''} added to ${restaurantName}`,
+      );
       setTimeout(() => setImportProgress(null), 3000);
     })();
   }, [showToast]);

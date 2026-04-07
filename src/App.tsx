@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
+import { requestNotificationPermission } from './lib/notifications';
 import { AuthPage } from './pages/AuthPage';
 import { HomePage } from './pages/HomePage';
 import { RestaurantPage } from './pages/RestaurantPage';
@@ -29,6 +30,9 @@ function App() {
         const { data: { session: refreshed } } = await supabase.auth.refreshSession();
         setSession(refreshed ?? session);
         loadThemeFromServer();
+        // Request native notification permission now that the user is authenticated.
+        // On iOS this shows the system prompt once; subsequent calls are no-ops.
+        requestNotificationPermission();
       }
       setLoading(false);
     });

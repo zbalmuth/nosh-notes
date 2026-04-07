@@ -1,0 +1,37 @@
+# Triggers a Codemagic iOS build every 90 days (certificates expire annually;
+# this keeps TestFlight fresh and catches any Vercel-side breakage).
+# Also available as a manual dispatch button in the GitHub Actions UI.
+#
+# Required GitHub secrets (Settings → Secrets → Actions):
+#   CODEMAGIC_API_TOKEN  — from codemagic.io → Teams → Integrations → API tokens
+#   CODEMAGIC_APP_ID     — the hex ID in the Codemagic app URL, e.g. 64abc123...
+
+name: Scheduled iOS Rebuild
+
+on:
+  # Jan 1 / Apr 1 / Jul 1 / Oct 1 at 00:00 UTC  ≈ every 90 days
+  schedule:
+    - cron: '0 0 1 1,4,7,10 *'
+  # Allows manual triggers from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  trigger-codemagic:
+    name: Trigger Codemagic ios-distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger build via Codemagic API
+        run: |
+          RESPONSE=$(curl --silent --show-error --fail \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-auth-token: ${{ secrets.CODEMAGIC_API_TOKEN }}" \
+            -d '{
+              "appId":     "${{ secrets.CODEMAGIC_APP_ID }}",
+              "workflowId": "ios-distribution",
+              "branch":    "master"
+            }' \
+            https://api.codemagic.io/builds)
+          echo "$RESPONSE"
+          BUILD_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['buildId'])")
+          echo "Build queued: https://codemagic.io/app/${{ secrets.CODEMAGIC_APP_ID }}/build/$BUILD_ID"
