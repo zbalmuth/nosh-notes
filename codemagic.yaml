@@ -63,18 +63,40 @@ workflows:
 
       - name: Verify signing identity
         script: |
-          echo "=== Signing identities in keychain ==="
+          echo "=== .p12 file size ==="
+          ls -la /tmp/certificate.p12 2>/dev/null || echo "MISSING: /tmp/certificate.p12 was not created"
+
+          echo ""
+          echo "=== p12 password check (openssl) ==="
+          openssl pkcs12 -in /tmp/certificate.p12 -noout \
+            -passin pass:"$CM_CERTIFICATE_PASSWORD" 2>&1 \
+            && echo "Password OK" || echo "WRONG PASSWORD or invalid p12"
+
+          echo ""
+          echo "=== All keychains ==="
+          security list-keychains
+
+          echo ""
+          echo "=== Default keychain ==="
+          security default-keychain
+
+          echo ""
+          echo "=== All identities (including invalid) ==="
+          security find-identity -p codesigning
+
+          echo ""
+          echo "=== Valid identities only ==="
           security find-identity -v -p codesigning
+
           echo ""
           echo "=== PROFILE_UUID: '$PROFILE_UUID' ==="
-          echo ""
           PROFILE_PATH="$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
           echo "=== Profile bundle ID ==="
           security cms -D -i "$PROFILE_PATH" \
             | plutil -extract 'Entitlements.application-identifier' raw - 2>/dev/null \
             || echo "(could not read profile)"
+
           echo ""
-          # Fail here — not 2 steps later — if cert or profile is missing
           security find-identity -v -p codesigning | grep -q "Apple Distribution" \
             || { echo "FATAL: No Apple Distribution cert in keychain — check CM_CERTIFICATE in ios_signing group"; exit 1; }
           [ -n "$PROFILE_UUID" ] \
