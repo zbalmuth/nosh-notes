@@ -13,11 +13,10 @@ workflows:
           include: true
 
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.zbalmuth.noshnotes
+      groups:
+        - ios_signing
       node: 22
-      xcode: 16.3
+      xcode: latest
 
     scripts:
       - name: Install npm dependencies
@@ -34,30 +33,66 @@ workflows:
 
       - name: Patch iOS project files
         script: |
-          # Info.plist — mark app as not using non-exempt encryption (required for App Store)
           PLIST="ios/App/App/Info.plist"
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" 2>/dev/null || \
           /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST"
-
-          # project.pbxproj — set correct bundle ID
           PBXPROJ="ios/App/App.xcodeproj/project.pbxproj"
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ"
           sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = com.zbalmuth.noshnotes;/g' "$PBXPROJ"
+
+      - name: Set up manual code signing
+        script: |
+          keychain initialize
+          CERT_PATH="/tmp/certificate.p12"
+          printf '%s' "$CM_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" \
+            -P "$CM_CERTIFICATE_PASSWORD" \
+            -A -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k ""
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_DIR"
+          echo "$CM_PROVISIONING_PROFILE" | base64 --decode > "$PROFILE_DIR/profile.mobileprovision"
+          PROFILE_UUID=$(security cms -D -i "$PROFILE_DIR/profile.mobileprovision" | plutil -extract UUID raw -)
+          mv "$PROFILE_DIR/profile.mobileprovision" "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> $CM_ENV
 
       - name: Build iOS IPA
         script: |
           ARCHIVE_PATH="/tmp/App.xcarchive"
           IPA_DIR="/tmp/ipa"
           (cd ios/App && agvtool new-version -all "$BUILD_NUMBER")
+          cat > "/tmp/ExportOptions.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store</string>
+            <key>teamID</key><string>9CL2835GC5</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.zbalmuth.noshnotes</key>
+              <string>$PROFILE_UUID</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
           xcodebuild archive \
             -project ios/App/App.xcodeproj \
             -scheme App \
             -destination "generic/platform=iOS" \
             -archivePath "$ARCHIVE_PATH" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=9CL2835GC5 \
+            PROVISIONING_PROFILE="$PROFILE_UUID" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             COMPILER_INDEX_STORE_ENABLE=NO
           xcodebuild -exportArchive \
             -archivePath "$ARCHIVE_PATH" \
             -exportPath "$IPA_DIR" \
-            -exportOptionsPlist "$CM_EXPORT_OPTIONS_PATH"
+            -exportOptionsPlist "/tmp/ExportOptions.plist"
 
     artifacts:
       - /tmp/ipa/*.ipa
