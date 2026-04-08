@@ -3,7 +3,7 @@ workflows:
     name: Nosh Notes iOS → TestFlight
     max_build_duration: 60
     integrations:
-      app_store_connect: Sous Chefs
+      app_store_connect: Personal
 
     triggering:
       events:
