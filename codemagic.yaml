@@ -43,27 +43,24 @@ workflows:
       - name: Set up manual code signing
         script: |
           keychain initialize
-          CERT_PATH="/tmp/certificate.p12"
-          printf '%s' "$CM_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+
+          printf '%s' "$CM_PRIVATE_KEY" | base64 --decode > /tmp/private.key
+          printf '%s' "$CM_CERTIFICATE_CER" | base64 --decode > /tmp/distribution.cer
 
           BREW_SSL="/opt/homebrew/opt/openssl@3/bin/openssl"
           [ -f "$BREW_SSL" ] || BREW_SSL="/usr/local/opt/openssl@3/bin/openssl"
-          echo "=== Brew SSL path: $BREW_SSL ==="
-          echo "=== Brew SSL exists: $([ -f "$BREW_SSL" ] && echo YES || echo NO) ==="
+          echo "=== Using: $BREW_SSL ==="
 
-          if [ -f "$BREW_SSL" ]; then
-            $BREW_SSL pkcs12 \
-              -in "$CERT_PATH" \
-              -passin pass:"$CM_CERTIFICATE_PASSWORD" \
-              -passout pass:"$CM_CERTIFICATE_PASSWORD" \
-              -export -legacy \
-              -out /tmp/cert_legacy.p12 && CERT_PATH="/tmp/cert_legacy.p12"
-            echo "=== Legacy P12 size: $(ls -lh /tmp/cert_legacy.p12 2>/dev/null || echo NOT CREATED) ==="
-          else
-            echo "=== Brew SSL NOT FOUND — using original P12 ==="
-          fi
+          $BREW_SSL pkcs12 \
+            -export -legacy \
+            -inkey /tmp/private.key \
+            -in /tmp/distribution.cer \
+            -out /tmp/certificate.p12 \
+            -passout pass:"$CM_CERTIFICATE_PASSWORD"
 
-          security import "$CERT_PATH" \
+          echo "=== P12 created: $(ls -lh /tmp/certificate.p12) ==="
+
+          security import /tmp/certificate.p12 \
             -P "$CM_CERTIFICATE_PASSWORD" \
             -A -T /usr/bin/codesign
           security set-key-partition-list \
@@ -71,6 +68,7 @@ workflows:
             -s -k ""
           echo "=== Valid identities ==="
           security find-identity -v -p codesigning
+
           PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
           mkdir -p "$PROFILE_DIR"
           echo "$CM_PROVISIONING_PROFILE" | base64 --decode > "$PROFILE_DIR/profile.mobileprovision"
