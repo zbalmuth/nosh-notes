@@ -56,6 +56,11 @@ workflows:
               -passout pass:"$CM_CERTIFICATE_PASSWORD" \
               -export -legacy \
               -out /tmp/cert_legacy.p12 && CERT_PATH="/tmp/cert_legacy.p12"
+            echo "=== Brew SSL path: $BREW_SSL ==="
+            echo "=== Brew SSL exists: $([ -f "$BREW_SSL" ] && echo YES || echo NO) ==="
+            echo "=== Legacy P12 size: $(ls -lh /tmp/cert_legacy.p12 2>/dev/null || echo NOT CREATED) ==="
+            echo "=== Valid identities ==="
+            security find-identity -v -p codesigning
           fi
 
           security import "$CERT_PATH" \
