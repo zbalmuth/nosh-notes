@@ -61,6 +61,34 @@ workflows:
           mv "$PROFILE_DIR/profile.mobileprovision" "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
           echo "PROFILE_UUID=$PROFILE_UUID" >> $CM_ENV
 
+      - name: Re-import cert in macOS-compatible format
+        script: |
+          PASS="$CM_CERTIFICATE_PASSWORD"
+          KEYCHAIN=$(security default-keychain | tr -d ' "')
+
+          # Homebrew's OpenSSL 3 can read modern AES-encrypted PKCS12 (created by OpenSSL 3 on Windows)
+          # and re-export it in the legacy 3DES format that macOS security import actually accepts.
+          BREW_SSL="/opt/homebrew/opt/openssl@3/bin/openssl"
+          [ -f "$BREW_SSL" ] || BREW_SSL="/usr/local/opt/openssl@3/bin/openssl"
+          echo "Using: $BREW_SSL ($($BREW_SSL version))"
+
+          $BREW_SSL pkcs12 \
+            -in /tmp/certificate.p12 \
+            -passin pass:"$PASS" \
+            -passout pass:"$PASS" \
+            -export -legacy \
+            -out /tmp/cert_legacy.p12
+          echo "Legacy p12: $(ls -lh /tmp/cert_legacy.p12)"
+
+          security import /tmp/cert_legacy.p12 \
+            -k "$KEYCHAIN" \
+            -P "$PASS" \
+            -A -T /usr/bin/codesign
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "" "$KEYCHAIN"
+
       - name: Verify signing identity
         script: |
           echo "=== .p12 file size ==="
