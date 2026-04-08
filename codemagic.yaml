@@ -46,9 +46,11 @@ workflows:
           CERT_PATH="/tmp/certificate.p12"
           printf '%s' "$CM_CERTIFICATE" | base64 --decode > "$CERT_PATH"
 
-          # Convert to legacy format so macOS security framework can read the private key
           BREW_SSL="/opt/homebrew/opt/openssl@3/bin/openssl"
           [ -f "$BREW_SSL" ] || BREW_SSL="/usr/local/opt/openssl@3/bin/openssl"
+          echo "=== Brew SSL path: $BREW_SSL ==="
+          echo "=== Brew SSL exists: $([ -f "$BREW_SSL" ] && echo YES || echo NO) ==="
+
           if [ -f "$BREW_SSL" ]; then
             $BREW_SSL pkcs12 \
               -in "$CERT_PATH" \
@@ -56,11 +58,9 @@ workflows:
               -passout pass:"$CM_CERTIFICATE_PASSWORD" \
               -export -legacy \
               -out /tmp/cert_legacy.p12 && CERT_PATH="/tmp/cert_legacy.p12"
-            echo "=== Brew SSL path: $BREW_SSL ==="
-            echo "=== Brew SSL exists: $([ -f "$BREW_SSL" ] && echo YES || echo NO) ==="
             echo "=== Legacy P12 size: $(ls -lh /tmp/cert_legacy.p12 2>/dev/null || echo NOT CREATED) ==="
-            echo "=== Valid identities ==="
-            security find-identity -v -p codesigning
+          else
+            echo "=== Brew SSL NOT FOUND — using original P12 ==="
           fi
 
           security import "$CERT_PATH" \
@@ -69,6 +69,8 @@ workflows:
           security set-key-partition-list \
             -S apple-tool:,apple:,codesign: \
             -s -k ""
+          echo "=== Valid identities ==="
+          security find-identity -v -p codesigning
           PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
           mkdir -p "$PROFILE_DIR"
           echo "$CM_PROVISIONING_PROFILE" | base64 --decode > "$PROFILE_DIR/profile.mobileprovision"
