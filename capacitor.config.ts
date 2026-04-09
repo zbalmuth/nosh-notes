@@ -12,7 +12,7 @@ const config: CapacitorConfig = {
     cleartext: false,
   },
   ios: {
-    contentInset: 'automatic',
+    contentInset: 'never',
     allowsLinkPreview: false,
     // Prevent Capacitor from stripping the status-bar area on notched devices.
     backgroundColor: '#ffffff',
