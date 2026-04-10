@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Filter, Star, X } from 'lucide-react';
+import { ArrowLeft, Filter, Star, X, LocateFixed } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { supabase } from '../lib/supabase';
 import L from 'leaflet';
@@ -37,6 +37,8 @@ export function MapPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
+  const [locating, setLocating] = useState(false);
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
@@ -65,6 +67,32 @@ export function MapPage() {
         updated_at: new Date().toISOString(),
       });
     }, 1000);
+  }, []);
+
+  const locateUser = useCallback(() => {
+    if (!navigator.geolocation || !mapRef.current) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        if (mapRef.current) {
+          mapRef.current.flyTo([latitude, longitude], 15, { duration: 1 });
+          if (userMarkerRef.current) {
+            userMarkerRef.current.setLatLng([latitude, longitude]);
+          } else {
+            userMarkerRef.current = L.marker([latitude, longitude], { icon: userLocationIcon })
+              .bindPopup('You are here')
+              .addTo(mapRef.current);
+          }
+        }
+        setLocating(false);
+      },
+      (err) => {
+        console.warn('Geolocation failed:', err.message);
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   }, []);
 
   const filtered = useMemo(() => {
@@ -201,6 +229,13 @@ export function MapPage() {
           <ArrowLeft size={22} />
         </button>
         <h1 style={{ flex: 1 }}>Map ({filtered.length})</h1>
+        <button
+          onClick={locateUser}
+          style={{ background: 'none', border: 'none', color: locating ? 'var(--text-muted)' : 'var(--hot-pink)', marginRight: 4 }}
+          disabled={locating}
+        >
+          <LocateFixed size={20} />
+        </button>
         <button
           onClick={() => setShowFilters(!showFilters)}
           style={{ background: 'none', border: 'none', color: 'var(--hot-pink)' }}
