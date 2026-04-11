@@ -678,8 +678,17 @@ export function HomePage() {
       <div style={{ padding: '12px 20px 100px' }}>
         {filtered.length === 0 ? (
           <div className="empty-state">
-            <h3>No restaurants yet</h3>
-            <p>Tap the + button to add your first restaurant</p>
+            {searchQuery || selectedCity !== 'all' || selectedCuisine !== 'all' || favoritesOnly || selectedList !== 'all' ? (
+              <>
+                <h3>No results</h3>
+                <p>Try adjusting your search or filters</p>
+              </>
+            ) : (
+              <>
+                <h3>No restaurants yet</h3>
+                <p>Tap the + button to add your first restaurant</p>
+              </>
+            )}
           </div>
         ) : (
           <>

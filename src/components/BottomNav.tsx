@@ -24,7 +24,8 @@ export function BottomNav() {
         <span>Map</span>
       </button>
       <button
-        onClick={() => navigate('/?search=true')}
+        className={isActive('/search') ? 'active' : ''}
+        onClick={() => navigate('/search')}
       >
         <Search size={22} />
         <span>Search</span>

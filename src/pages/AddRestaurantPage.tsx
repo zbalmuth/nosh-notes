@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Search, Plus, Loader, X } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { searchRestaurants } from '../lib/api';
@@ -102,6 +102,7 @@ function SearchResultCard({ result, onSelect, onDismiss }: { result: SearchResul
 
 export function AddRestaurantPage() {
   const navigate = useNavigate();
+  const routerLocation = useLocation();
   const { lists, cuisineTags: existingTags, addRestaurant, addList } = useApp();
 
   const [tab, setTab] = useState<Tab>('search');
@@ -137,6 +138,15 @@ export function AddRestaurantPage() {
   const [saving, setSaving] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [showNewList, setShowNewList] = useState(false);
+
+  // Pre-fill from Search page "Add" button
+  useEffect(() => {
+    const prefill = routerLocation.state?.prefill;
+    if (prefill) {
+      handleSelectResult(prefill);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-detect location
   useEffect(() => {

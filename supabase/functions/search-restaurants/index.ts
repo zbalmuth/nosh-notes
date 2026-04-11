@@ -23,8 +23,10 @@ serve(async (req) => {
       return await searchGoogle(query, location, latitude, longitude);
     }
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('search-restaurants error:', message);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -51,6 +53,12 @@ async function searchYelp(query: string, location?: string, latitude?: number, l
   const res = await fetch(`https://api.yelp.com/v3/businesses/search?${params}`, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.error('Yelp API error:', res.status, text);
+    throw new Error(`Yelp API returned ${res.status}: ${text}`);
+  }
 
   const data = await res.json();
 
@@ -94,6 +102,12 @@ async function searchGoogle(query: string, location?: string, latitude?: number,
   }
 
   const res = await fetch(url);
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.error('Google Places API error:', res.status, text);
+    throw new Error(`Google Places API returned ${res.status}: ${text}`);
+  }
 
   const data = await res.json();
 
