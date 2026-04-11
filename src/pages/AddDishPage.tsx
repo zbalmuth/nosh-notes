@@ -208,7 +208,7 @@ export function AddDishPage() {
         analyzeMenuUrl(menuUrl.trim()),
         getDishes(restaurantId),
       ]);
-      const dishes = (result.dishes || []).map((d: { name: string; dish_type: string }) => ({
+      const dishes = (result.dishes || []).map((d: { name: string; dish_type: string; [key: string]: unknown }) => ({
         name: d.name,
         dish_type: d.dish_type,
         action: 'ignore' as const,

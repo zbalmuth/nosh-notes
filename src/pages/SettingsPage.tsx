@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Palette, MapPin, Plus, X, Merge, LogOut } from 'lucide-react';
+import { ArrowLeft, Palette, MapPin, X, LogOut } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { supabase } from '../lib/supabase';
 
@@ -62,11 +62,8 @@ export function SettingsPage() {
   const { restaurants, cities, updateRestaurant, showToast, refreshRestaurants } = useApp();
 
   const [currentTheme, setCurrentTheme] = useState<ThemeName>(getTheme());
-  const [showCityManager, setShowCityManager] = useState(false);
   const [mergeFrom, setMergeFrom] = useState<string[]>([]);
   const [mergeTo, setMergeTo] = useState('');
-  const [newCityName, setNewCityName] = useState('');
-  const [showAddCity, setShowAddCity] = useState(false);
 
   const handleThemeChange = (theme: ThemeName) => {
     setCurrentTheme(theme);
@@ -95,10 +92,6 @@ export function SettingsPage() {
     showToast(`${ids.length} restaurant${ids.length !== 1 ? 's' : ''} moved to "${target}"`);
     setMergeFrom([]);
     setMergeTo('');
-  };
-
-  const handleAddCityToRestaurant = async () => {
-    // This would need to pick a restaurant - for now not needed
   };
 
   const toggleMergeCity = (city: string) => {

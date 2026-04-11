@@ -1,4 +1,4 @@
-import { RATING_LABELS, getRatingLabel, getRatingColor } from '../types';
+import { RATING_LABELS } from '../types';
 
 interface RatingSliderProps {
   value: number;
@@ -6,8 +6,6 @@ interface RatingSliderProps {
 }
 
 export function RatingSlider({ value, onChange }: RatingSliderProps) {
-  const label = getRatingLabel(value);
-  const color = getRatingColor(value);
 
   return (
     <div className="rating-slider">

@@ -160,6 +160,7 @@ export async function analyzeDishImage(imageBase64: string): Promise<{
 // ─── AI Menu URL Analysis (via Edge Function proxy) ─────────────────────────
 export async function analyzeMenuUrl(url: string): Promise<{
   dishes: { name: string; dish_type: string }[];
+  note?: string;
 }> {
   const { data, error } = await supabase.functions.invoke('analyze-menu-url', {
     body: { url },
