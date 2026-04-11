@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { requestNotificationPermission } from './lib/notifications';
+import { SplashScreen } from '@capacitor/splash-screen';
 import { AuthPage } from './pages/AuthPage';
 import { HomePage } from './pages/HomePage';
 import { RestaurantPage } from './pages/RestaurantPage';
@@ -35,6 +36,7 @@ function App() {
         requestNotificationPermission();
       }
       setLoading(false);
+      SplashScreen.hide({ fadeOutDuration: 200 }).catch(() => {});
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(

@@ -22,26 +22,38 @@ workflows:
       - name: Install npm dependencies
         script: npm install --legacy-peer-deps
 
+      - name: Build web app
+        script: |
+          echo "VITE_SUPABASE_URL=$VITE_SUPABASE_URL" >> .env
+          echo "VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY" >> .env
+          npm run build
+
       - name: Capacitor sync
         script: |
-          [ -d ios ] || npx cap add ios
-          sed -i '' "s/platform :ios, '[0-9.]*'/platform :ios, '14.0'/" ios/App/Podfile 2>/dev/null || true
-          mkdir -p out
+          [ -f "ios/App/App.xcodeproj/project.pbxproj" ] || npx cap add ios
+          sed -i '' "s/platform :ios, '[0-9.]*'/platform :ios, '16.0'/" ios/App/Podfile
           npx cap sync ios
-
-      - name: Generate app icons
-        script: npx @capacitor/assets generate --ios
 
       - name: Patch iOS project files
         script: |
           PLIST="ios/App/App/Info.plist"
-          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" 2>/dev/null || \
-          /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Delete :ITSAppUsesNonExemptEncryption" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST"
           /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string 'Used to show your location on the map'" "$PLIST" 2>/dev/null || \
           /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription 'Used to show your location on the map'" "$PLIST"
+
           PBXPROJ="ios/App/App.xcodeproj/project.pbxproj"
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ"
           sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = com.zbalmuth.noshnotes;/g' "$PBXPROJ"
+
+      - name: Inject MyViewController
+        script: |
+          cp patches/MyViewController.swift ios/App/App/MyViewController.swift
+          python3 scripts/ci_register_myviewcontroller.py
+          python3 scripts/ci_patch_storyboard.py
+
+      - name: Generate app icons
+        script: npx @capacitor/assets generate --ios
 
       - name: Set up manual code signing
         script: |
