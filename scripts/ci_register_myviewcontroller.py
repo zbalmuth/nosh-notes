@@ -8,8 +8,8 @@ import sys
 
 PBXPROJ = "ios/App/App.xcodeproj/project.pbxproj"
 
-FILE_REF_UUID  = "AA000001000000000000001"
-BUILD_FILE_UUID = "AA000001000000000000002"
+FILE_REF_UUID  = "AA0000010000000000000001"
+BUILD_FILE_UUID = "AA0000010000000000000002"
 FILENAME = "MyViewController.swift"
 
 with open(PBXPROJ, "r") as f:
@@ -24,7 +24,7 @@ if FILENAME in content:
 file_ref = (
     f"\t\t{FILE_REF_UUID} = {{isa = PBXFileReference; "
     f"lastKnownFileType = sourcecode.swift; name = {FILENAME}; "
-    f"path = App/{FILENAME}; sourceTree = \"<group>\"; }};\n"
+    f"path = {FILENAME}; sourceTree = \"<group>\"; }};\n"
 )
 content = re.sub(
     r"(\/\* Begin PBXFileReference section \*\/\n)",
