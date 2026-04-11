@@ -133,6 +133,19 @@ export async function deleteDish(id: string) {
   if (error) throw error;
 }
 
+// ─── Dish search (across all user's dishes) ─────────────────────────────────
+export async function searchDishes(query: string): Promise<Dish[]> {
+  const q = `%${query}%`;
+  const { data, error } = await supabase
+    .from('dishes')
+    .select('*')
+    .or(`name.ilike.${q},notes.ilike.${q}`)
+    .order('created_at', { ascending: false })
+    .limit(30);
+  if (error) throw error;
+  return data || [];
+}
+
 // ─── Search (via Edge Function proxy) ───────────────────────────────────────
 export async function searchRestaurants(
   query: string,

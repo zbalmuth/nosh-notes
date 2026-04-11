@@ -23,11 +23,13 @@ serve(async (req) => {
       return await searchGoogle(query, location, latitude, longitude);
     }
   } catch (error) {
+    // Always return 200 with empty results so the client doesn't show a hard error.
+    // The real cause is logged above inside each provider function.
     const message = error instanceof Error ? error.message : String(error);
-    console.error('search-restaurants error:', message);
+    console.error('search-restaurants top-level error:', message);
     return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ results: [], warning: message }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
@@ -57,7 +59,10 @@ async function searchYelp(query: string, location?: string, latitude?: number, l
   if (!res.ok) {
     const text = await res.text();
     console.error('Yelp API error:', res.status, text);
-    throw new Error(`Yelp API returned ${res.status}: ${text}`);
+    return new Response(
+      JSON.stringify({ results: [], warning: `Yelp ${res.status}` }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 
   const data = await res.json();
@@ -106,10 +111,16 @@ async function searchGoogle(query: string, location?: string, latitude?: number,
   if (!res.ok) {
     const text = await res.text();
     console.error('Google Places API error:', res.status, text);
-    throw new Error(`Google Places API returned ${res.status}: ${text}`);
+    return new Response(
+      JSON.stringify({ results: [], warning: `Google ${res.status}` }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 
   const data = await res.json();
+  if (data.status && data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+    console.error('Google Places status:', data.status, data.error_message);
+  }
 
   const results = await Promise.all(
     (data.results || []).slice(0, 10).map(async (place: any) => {
