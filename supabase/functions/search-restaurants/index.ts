@@ -40,16 +40,15 @@ async function searchYelp(query: string, location?: string, latitude?: number, l
 
   const params = new URLSearchParams({
     term: query,
+    location: location || 'New York',
     limit: '10',
     categories: 'restaurants,food',
   });
 
-  // Prefer precise coordinates; fall back to city string
+  // Add coordinates for tighter bias (Yelp still needs location string too)
   if (latitude != null && longitude != null) {
     params.set('latitude', String(latitude));
     params.set('longitude', String(longitude));
-  } else {
-    params.set('location', location || 'New York');
   }
 
   const res = await fetch(`https://api.yelp.com/v3/businesses/search?${params}`, {
