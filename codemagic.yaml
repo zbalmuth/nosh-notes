@@ -16,7 +16,7 @@ workflows:
       groups:
         - ios_signing
       node: 22
-      xcode: 16.3
+      xcode: 26
 
     scripts:
       - name: Install npm dependencies
