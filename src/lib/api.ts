@@ -137,10 +137,12 @@ export async function deleteDish(id: string) {
 export async function searchRestaurants(
   query: string,
   provider: SearchProvider,
-  location?: string
+  location?: string,
+  latitude?: number,
+  longitude?: number
 ): Promise<SearchResult[]> {
   const { data, error } = await supabase.functions.invoke('search-restaurants', {
-    body: { query, provider, location },
+    body: { query, provider, location, latitude, longitude },
   });
   if (error) throw error;
   return data?.results || [];

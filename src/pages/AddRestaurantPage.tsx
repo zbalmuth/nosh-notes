@@ -171,7 +171,7 @@ export function AddRestaurantPage() {
     setSearching(true);
     setSearchError('');
     try {
-      const data = await searchRestaurants(query, provider, searchLocation || undefined);
+      const data = await searchRestaurants(query, provider, searchLocation || undefined, latitude ?? undefined, longitude ?? undefined);
       setResults(data);
       if (data.length === 0) setSearchError('No results found. Try a different search.');
     } catch (err: any) {

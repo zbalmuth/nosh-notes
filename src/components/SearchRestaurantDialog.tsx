@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, X, Loader } from 'lucide-react';
 import { searchRestaurants } from '../lib/api';
 import type { SearchProvider, SearchResult } from '../types';
@@ -12,36 +12,39 @@ interface Props {
 export function SearchRestaurantDialog({ open, onClose, onSelect }: Props) {
   const [query, setQuery] = useState('');
   const [location, setLocation] = useState('');
+  const [latitude, setLatitude] = useState<number | undefined>(undefined);
+  const [longitude, setLongitude] = useState<number | undefined>(undefined);
   const [provider, setProvider] = useState<SearchProvider>('google');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
 
-  // Auto-detect location
-  useState(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          try {
-            const res = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`
-            );
-            const data = await res.json();
-            const city = data.address?.city || data.address?.town || data.address?.village || '';
-            if (city) setLocation(city);
-          } catch { /* ignore */ }
-        },
-        () => { /* ignore */ }
-      );
-    }
-  });
+  // Auto-detect location once on mount
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        setLatitude(pos.coords.latitude);
+        setLongitude(pos.coords.longitude);
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`
+          );
+          const data = await res.json();
+          const city = data.address?.city || data.address?.town || data.address?.village || '';
+          if (city) setLocation(city);
+        } catch { /* ignore */ }
+      },
+      () => { /* ignore */ }
+    );
+  }, []);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
     setSearching(true);
     setError('');
     try {
-      const data = await searchRestaurants(query, provider, location || undefined);
+      const data = await searchRestaurants(query, provider, location || undefined, latitude, longitude);
       setResults(data);
       if (data.length === 0) setError('No results found. Try a different search.');
     } catch (err) {

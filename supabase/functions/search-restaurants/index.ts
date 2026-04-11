@@ -15,12 +15,12 @@ serve(async (req) => {
   }
 
   try {
-    const { query, provider, location } = await req.json();
+    const { query, provider, location, latitude, longitude } = await req.json();
 
     if (provider === 'yelp') {
-      return await searchYelp(query, location);
+      return await searchYelp(query, location, latitude, longitude);
     } else {
-      return await searchGoogle(query, location);
+      return await searchGoogle(query, location, latitude, longitude);
     }
   } catch (error) {
     return new Response(
@@ -30,16 +30,23 @@ serve(async (req) => {
   }
 });
 
-async function searchYelp(query: string, location?: string) {
+async function searchYelp(query: string, location?: string, latitude?: number, longitude?: number) {
   const apiKey = Deno.env.get('YELP_API_KEY');
   if (!apiKey) throw new Error('YELP_API_KEY not configured');
 
   const params = new URLSearchParams({
     term: query,
-    location: location || 'New York',
     limit: '10',
     categories: 'restaurants,food',
   });
+
+  // Prefer precise coordinates; fall back to city string
+  if (latitude != null && longitude != null) {
+    params.set('latitude', String(latitude));
+    params.set('longitude', String(longitude));
+  } else {
+    params.set('location', location || 'New York');
+  }
 
   const res = await fetch(`https://api.yelp.com/v3/businesses/search?${params}`, {
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -74,14 +81,19 @@ async function searchYelp(query: string, location?: string) {
   );
 }
 
-async function searchGoogle(query: string, location?: string) {
+async function searchGoogle(query: string, location?: string, latitude?: number, longitude?: number) {
   const apiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
   if (!apiKey) throw new Error('GOOGLE_PLACES_API_KEY not configured');
 
   const searchQuery = `${query} restaurant ${location || ''}`.trim();
-  const res = await fetch(
-    `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(searchQuery)}&type=restaurant&key=${apiKey}`
-  );
+  let url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(searchQuery)}&type=restaurant&key=${apiKey}`;
+
+  // Bias results toward user's GPS location (50 km radius)
+  if (latitude != null && longitude != null) {
+    url += `&location=${latitude},${longitude}&radius=50000`;
+  }
+
+  const res = await fetch(url);
 
   const data = await res.json();
 
