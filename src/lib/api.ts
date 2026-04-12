@@ -154,10 +154,18 @@ export async function searchRestaurants(
   latitude?: number,
   longitude?: number
 ): Promise<SearchResult[]> {
-  const { data, error } = await supabase.functions.invoke('search-restaurants', {
-    body: { query, provider, location, latitude, longitude },
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const res = await fetch(`${supabaseUrl}/functions/v1/search-restaurants`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${supabaseKey}`,
+    },
+    body: JSON.stringify({ query, provider, location, latitude, longitude }),
   });
-  if (error) throw error;
+  if (!res.ok) throw new Error(`Search request failed: ${res.status}`);
+  const data = await res.json();
   return data?.results || [];
 }
 
