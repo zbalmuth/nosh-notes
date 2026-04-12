@@ -14,6 +14,8 @@ import {
   Share2,
   ArrowUpDown,
   Sparkles,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { DishCard } from '../components/DishCard';
@@ -42,6 +44,7 @@ export function RestaurantPage() {
   const [sortBy, setSortBy] = useState<'rating' | 'alpha'>('rating');
   const [sortReversed, setSortReversed] = useState(false);
   const [wantToTryOnly, setWantToTryOnly] = useState(false);
+  const [infoExpanded, setInfoExpanded] = useState(false);
 
   useEffect(() => {
     const r = restaurants.find((r) => r.id === id);
@@ -210,71 +213,104 @@ export function RestaurantPage() {
 
       {/* Content */}
       <div style={{ padding: '16px 20px' }}>
-        {/* Contact & Info — always visible */}
-        {(restaurant.address || restaurant.phone || restaurant.price_level || restaurant.external_rating || hasLinks) && (
-          <div style={{ marginBottom: 12 }}>
-            {/* Address */}
-            {(restaurant.address || restaurant.city) && (
-              <div className="info-row">
-                <MapPin size={16} />
-                <span>
-                  {restaurant.address
-                    ? `${restaurant.address}${restaurant.city ? `, ${restaurant.city}` : ''}${restaurant.state ? `, ${restaurant.state}` : ''}`
-                    : `${restaurant.city}${restaurant.state ? `, ${restaurant.state}` : ''}`}
-                </span>
-              </div>
-            )}
+        {/* Contact & Info — collapsible card */}
+        {(restaurant.address || restaurant.city || restaurant.phone || restaurant.price_level || restaurant.external_rating || hasLinks || restaurant.cuisine_tags?.length > 0) && (
+          <div style={{
+            marginBottom: 12,
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            overflow: 'hidden',
+          }}>
+            {/* Always visible: address + expand toggle */}
+            <button
+              onClick={() => setInfoExpanded(v => !v)}
+              style={{
+                width: '100%', textAlign: 'left', background: 'none', border: 'none',
+                padding: '12px 14px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              <MapPin size={15} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 14, color: 'var(--text-secondary)' }}>
+                {restaurant.address
+                  ? `${restaurant.address}${restaurant.city ? `, ${restaurant.city}` : ''}${restaurant.state ? `, ${restaurant.state}` : ''}`
+                  : restaurant.city
+                    ? `${restaurant.city}${restaurant.state ? `, ${restaurant.state}` : ''}`
+                    : 'See details'}
+              </span>
+              {infoExpanded
+                ? <ChevronUp size={15} color="var(--text-muted)" />
+                : <ChevronDown size={15} color="var(--text-muted)" />}
+            </button>
 
-            {/* Phone */}
-            {restaurant.phone && (
-              <div className="info-row">
-                <Phone size={16} />
-                <a href={`tel:${restaurant.phone}`} style={{ color: 'var(--hot-pink)' }}>
-                  {restaurant.phone}
-                </a>
-              </div>
-            )}
+            {/* Expanded details */}
+            {infoExpanded && (
+              <div style={{ padding: '0 14px 12px', borderTop: '1px solid var(--border)' }}>
+                {/* Phone + Menu on same line */}
+                {(restaurant.phone || restaurant.menu_url) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+                    {restaurant.phone && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Phone size={15} color="var(--text-muted)" />
+                        <a href={`tel:${restaurant.phone}`} style={{ fontSize: 14, color: 'var(--hot-pink)' }}>
+                          {restaurant.phone}
+                        </a>
+                      </div>
+                    )}
+                    {restaurant.menu_url && (
+                      <a href={restaurant.menu_url} target="_blank" rel="noopener"
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: 'var(--electric-blue)' }}>
+                        <BookOpen size={14} /> Menu
+                      </a>
+                    )}
+                  </div>
+                )}
 
-            {/* Price level + ratings */}
-            {(restaurant.price_level || restaurant.external_rating) && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, marginBottom: 4, paddingLeft: 2 }}>
-                {restaurant.price_level && (
-                  <span style={{ fontFamily: "'Righteous', cursive", color: 'var(--palm-green)', fontSize: 14 }}>
-                    {restaurant.price_level}
-                  </span>
+                {/* Price + rating */}
+                {(restaurant.price_level || restaurant.external_rating) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                    {restaurant.price_level && (
+                      <span style={{ fontFamily: "'Righteous', cursive", color: 'var(--palm-green)', fontSize: 14 }}>
+                        {restaurant.price_level}
+                      </span>
+                    )}
+                    {restaurant.external_rating && (
+                      <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                        <span style={{ color: restaurant.yelp_url ? '#f15b31' : 'var(--text-muted)' }}>★</span>{' '}
+                        {restaurant.external_rating}{restaurant.yelp_url ? ' Yelp' : ''}
+                      </span>
+                    )}
+                  </div>
                 )}
-                {restaurant.external_rating && restaurant.yelp_url && (
-                  <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    <span style={{ color: '#f15b31' }}>★</span> {restaurant.external_rating} Yelp
-                  </span>
-                )}
-                {restaurant.external_rating && !restaurant.yelp_url && (
-                  <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>★ {restaurant.external_rating}</span>
-                )}
-              </div>
-            )}
 
-            {/* Links — all on one line */}
-            {hasLinks && (
-              <div className="links-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
-                {restaurant.website && (
-                  <a href={restaurant.website} target="_blank" rel="noopener" className="link-chip">
-                    <Globe size={14} /> Website
-                  </a>
+                {/* Links: Website | Google | Yelp */}
+                {(restaurant.website || restaurant.google_url || yelpUrl) && (
+                  <div className="links-row" style={{ marginTop: 10, flexWrap: 'wrap' }}>
+                    {restaurant.website && (
+                      <a href={restaurant.website} target="_blank" rel="noopener" className="link-chip">
+                        <Globe size={14} /> Website
+                      </a>
+                    )}
+                    {restaurant.google_url && (
+                      <a href={restaurant.google_url} target="_blank" rel="noopener" className="link-chip">
+                        <ExternalLink size={14} /> Google
+                      </a>
+                    )}
+                    <a href={yelpUrl} target="_blank" rel="noopener" className="link-chip">
+                      <ExternalLink size={14} /> Yelp
+                    </a>
+                  </div>
                 )}
-                {restaurant.menu_url && (
-                  <a href={restaurant.menu_url} target="_blank" rel="noopener" className="link-chip">
-                    <BookOpen size={14} /> Menu
-                  </a>
+
+                {/* Cuisine tags */}
+                {restaurant.cuisine_tags?.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                    {restaurant.cuisine_tags.map(tag => (
+                      <span key={tag} className="chip" style={{ fontSize: 12, padding: '3px 10px' }}>{tag}</span>
+                    ))}
+                  </div>
                 )}
-                {restaurant.google_url && (
-                  <a href={restaurant.google_url} target="_blank" rel="noopener" className="link-chip">
-                    <ExternalLink size={14} /> Google
-                  </a>
-                )}
-                <a href={yelpUrl} target="_blank" rel="noopener" className="link-chip">
-                  <ExternalLink size={14} /> Yelp
-                </a>
               </div>
             )}
           </div>
