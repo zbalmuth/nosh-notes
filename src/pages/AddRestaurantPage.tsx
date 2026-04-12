@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Search, Plus, Loader, X } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Loader, X, Tag } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { searchRestaurants } from '../lib/api';
 import type { SearchResult, SearchProvider } from '../types';
@@ -138,6 +138,7 @@ export function AddRestaurantPage() {
   const [saving, setSaving] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [showNewList, setShowNewList] = useState(false);
+  const [showCuisinePicker, setShowCuisinePicker] = useState(false);
 
   // Pre-fill from Search page "Add" button
   useEffect(() => {
@@ -502,30 +503,88 @@ export function AddRestaurantPage() {
             {/* Cuisine Tags */}
             <div className="form-group">
               <label>Cuisines</label>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                {allTags.map((tag) => (
+
+              {/* Selected tags — subtle, matching home page style */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: selectedCuisines.length > 0 ? 10 : 0 }}>
+                {selectedCuisines.map(tag => (
                   <button
                     key={tag}
-                    className={`chip ${selectedCuisines.includes(tag) ? 'active' : ''}`}
                     onClick={() => toggleCuisine(tag)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    }}
+                    title={`Remove ${tag}`}
                   >
-                    {tag}
+                    <Tag size={11} color="var(--hot-pink)" />
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{tag}</span>
+                    <X size={10} color="var(--text-muted)" />
                   </button>
                 ))}
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  className="input"
-                  placeholder="Add new cuisine..."
-                  value={newCuisine}
-                  onChange={(e) => setNewCuisine(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && addNewCuisine()}
-                  style={{ flex: 1 }}
-                />
-                <button className="btn btn-secondary" onClick={addNewCuisine} style={{ padding: '8px 12px' }}>
-                  <Plus size={16} />
+
+              {/* Add button / expanded picker */}
+              {!showCuisinePicker ? (
+                <button
+                  onClick={() => setShowCuisinePicker(true)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    background: 'none', border: '1px dashed var(--border)',
+                    borderRadius: 20, padding: '4px 12px', fontSize: 13,
+                    color: 'var(--text-muted)', cursor: 'pointer',
+                  }}
+                >
+                  <Plus size={13} /> Add cuisine
                 </button>
-              </div>
+              ) : (
+                <div style={{
+                  border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+                  background: 'var(--bg-secondary)', padding: 12, marginTop: 4,
+                }}>
+                  {/* Text input for new cuisine */}
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                    <input
+                      className="input"
+                      placeholder="Type a cuisine..."
+                      value={newCuisine}
+                      onChange={(e) => setNewCuisine(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { addNewCuisine(); setShowCuisinePicker(false); } }}
+                      autoFocus
+                      style={{ flex: 1, fontSize: 13 }}
+                    />
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => { addNewCuisine(); setShowCuisinePicker(false); }}
+                      style={{ padding: '8px 12px' }}
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+
+                  {/* Existing tags to pick from (excluding already selected) */}
+                  {allTags.filter(t => !selectedCuisines.includes(t)).length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                      {allTags.filter(t => !selectedCuisines.includes(t)).map(tag => (
+                        <button
+                          key={tag}
+                          className="chip"
+                          onClick={() => { toggleCuisine(tag); setShowCuisinePicker(false); }}
+                          style={{ fontSize: 12 }}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => setShowCuisinePicker(false)}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer', padding: 0 }}
+                  >
+                    Done
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Save */}
