@@ -4,6 +4,7 @@ import { ArrowLeft, Search, Plus, Loader, X, Tag } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { searchRestaurants } from '../lib/api';
 import type { SearchResult, SearchProvider } from '../types';
+import { detectLocation } from '../lib/location';
 
 type Tab = 'search' | 'manual';
 
@@ -149,25 +150,16 @@ export function AddRestaurantPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-detect location
+  // Auto-detect location (cached across components)
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(async (pos) => {
-        setLatitude(pos.coords.latitude);
-        setLongitude(pos.coords.longitude);
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`
-          );
-          const data = await res.json();
-          const detectedCity = data.address?.city || data.address?.town || data.address?.village || '';
-          if (detectedCity && !searchLocation) setSearchLocation(detectedCity);
-          if (detectedCity && !city) setCity(detectedCity);
-          const detectedState = data.address?.state || '';
-          if (detectedState && !state) setState(detectedState);
-        } catch { /* ignore */ }
-      });
-    }
+    detectLocation().then((loc) => {
+      if (!loc) return;
+      setLatitude(loc.lat);
+      setLongitude(loc.lng);
+      if (loc.city && !searchLocation) setSearchLocation(loc.city);
+      if (loc.city && !city) setCity(loc.city);
+      if (loc.state && !state) setState(loc.state);
+    });
   }, []);
 
   // Ensure "My Restaurants" list exists

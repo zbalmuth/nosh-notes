@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { requestNotificationPermission } from './lib/notifications';
@@ -20,20 +20,46 @@ import { applyTheme, getTheme, loadThemeFromServer } from './pages/SettingsPage'
 // Apply locally saved theme immediately (no flash)
 applyTheme(getTheme());
 
+const NAV_ROUTES = ['/', '/map', '/search', '/settings'];
+
+// Saves the current nav tab to localStorage whenever it changes
+function RouteTracker() {
+  const location = useLocation();
+  useEffect(() => {
+    if (NAV_ROUTES.includes(location.pathname)) {
+      localStorage.setItem('nosh-last-route', location.pathname);
+    }
+  }, [location.pathname]);
+  return null;
+}
+
+// On first mount, navigates to the last saved tab (runs inside BrowserRouter via useEffect,
+// so it happens after the first render and avoids any WebView URL side-effects during render)
+function InitialRedirect() {
+  const navigate = useNavigate();
+  const done = useRef(false);
+  useEffect(() => {
+    if (done.current) return;
+    done.current = true;
+    const saved = localStorage.getItem('nosh-last-route');
+    if (saved && saved !== '/') {
+      navigate(saved, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
+}
+
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // First try to restore and refresh the session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session) {
-        // Force a token refresh to ensure we have a valid access token
         const { data: { session: refreshed } } = await supabase.auth.refreshSession();
         setSession(refreshed ?? session);
         loadThemeFromServer();
-        // Request native notification permission now that the user is authenticated.
-        // On iOS this shows the system prompt once; subsequent calls are no-ops.
         requestNotificationPermission();
       }
       setLoading(false);
@@ -65,6 +91,8 @@ function App() {
   return (
     <AppProvider>
       <BrowserRouter>
+        <InitialRedirect />
+        <RouteTracker />
         <div className="app-container">
           <div className="page-content">
             <Routes>

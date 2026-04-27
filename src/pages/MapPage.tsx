@@ -38,6 +38,7 @@ export function MapPage() {
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
 
   const [locating, setLocating] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -148,6 +149,7 @@ export function MapPage() {
 
       mapRef.current = map;
       markersRef.current = L.layerGroup().addTo(map);
+      setMapReady(true);
     };
 
     initMap();
@@ -217,7 +219,7 @@ export function MapPage() {
     if (bounds.isValid() && !hasRestoredView.current) {
       mapRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
     }
-  }, [filtered]);
+  }, [filtered, mapReady]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

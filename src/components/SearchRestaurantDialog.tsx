@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, X, Loader } from 'lucide-react';
 import { searchRestaurants } from '../lib/api';
 import type { SearchProvider, SearchResult } from '../types';
+import { detectLocation } from '../lib/location';
 
 interface Props {
   open: boolean;
@@ -19,24 +20,14 @@ export function SearchRestaurantDialog({ open, onClose, onSelect }: Props) {
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
 
-  // Auto-detect location once on mount
+  // Auto-detect location once (cached across components)
   useEffect(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        setLatitude(pos.coords.latitude);
-        setLongitude(pos.coords.longitude);
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`
-          );
-          const data = await res.json();
-          const city = data.address?.city || data.address?.town || data.address?.village || '';
-          if (city) setLocation(city);
-        } catch { /* ignore */ }
-      },
-      () => { /* ignore */ }
-    );
+    detectLocation().then((loc) => {
+      if (!loc) return;
+      setLatitude(loc.lat);
+      setLongitude(loc.lng);
+      if (loc.city) setLocation(loc.city);
+    });
   }, []);
 
   const handleSearch = async () => {

@@ -5,6 +5,7 @@ import { useApp } from '../hooks/useAppContext';
 import { searchRestaurants, searchDishes } from '../lib/api';
 import type { SearchResult, SearchProvider, Dish } from '../types';
 import { getRatingColor } from '../types';
+import { detectLocation } from '../lib/location';
 
 export function SearchPage() {
   const navigate = useNavigate();
@@ -34,21 +35,14 @@ export function SearchPage() {
     inputRef.current?.focus();
   }, []);
 
-  // Auto-detect location once
+  // Auto-detect location once (cached across components)
   useEffect(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-      setLatitude(pos.coords.latitude);
-      setLongitude(pos.coords.longitude);
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`
-        );
-        const data = await res.json();
-        const city = data.address?.city || data.address?.town || data.address?.village || '';
-        if (city) setLocationLabel(city);
-      } catch { /* ignore */ }
-    }, () => { /* ignore */ });
+    detectLocation().then((loc) => {
+      if (!loc) return;
+      setLatitude(loc.lat);
+      setLongitude(loc.lng);
+      if (loc.city) setLocationLabel(loc.city);
+    });
   }, []);
 
   // Real-time collection filter
