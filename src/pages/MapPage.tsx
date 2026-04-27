@@ -97,6 +97,7 @@ export function MapPage() {
   }, []);
 
   const filtered = useMemo(() => {
+    console.log('[MapPage] total restaurants:', restaurants.length, 'with coords:', restaurants.filter(r => r.latitude && r.longitude).length);
     let result = restaurants.filter((r) => r.latitude && r.longitude);
     if (favoritesOnly) result = result.filter((r) => r.is_favorite);
     if (selectedList !== 'all') result = result.filter((r) => r.lists?.includes(selectedList));
@@ -187,6 +188,7 @@ export function MapPage() {
 
   // Update markers when filtered restaurants change
   useEffect(() => {
+    console.log('[MapPage] markers effect — mapReady:', mapReady, 'filtered:', filtered.length, 'mapRef:', !!mapRef.current);
     if (!mapRef.current || !markersRef.current) return;
 
     markersRef.current.clearLayers();
