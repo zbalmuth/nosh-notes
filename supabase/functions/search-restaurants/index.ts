@@ -134,9 +134,16 @@ async function searchGoogle(query: string, location?: string, latitude?: number,
       } catch { /* use basic info */ }
 
       const photoRef = place.photos?.[0]?.photo_reference;
-      const imageUrl = photoRef
-        ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoRef}&key=${apiKey}`
-        : '';
+      let imageUrl = '';
+      if (photoRef) {
+        try {
+          // Follow Google's redirect to get the actual CDN URL — no API key exposed, browser-loadable
+          const photoRes = await fetch(
+            `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoRef}&key=${apiKey}`
+          );
+          imageUrl = photoRes.url;
+        } catch { /* ignore */ }
+      }
 
       // Extract city and state from address_components
       let city = '';

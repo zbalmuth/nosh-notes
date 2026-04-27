@@ -97,6 +97,7 @@ export function RestaurantCard({ restaurant, selectionMode, selected, onToggleSe
           <img
             src={restaurant.image_url}
             alt={restaurant.name}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
             style={{
               width: 72, height: 72, objectFit: 'cover',
               borderRadius: 8, border: '2px solid var(--border)', flexShrink: 0,

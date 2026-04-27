@@ -38,6 +38,7 @@ export function RestaurantPage() {
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [loading, setLoading] = useState(true);
+  const [heroImageError, setHeroImageError] = useState(false);
   const [dishSelectionMode, setDishSelectionMode] = useState(false);
   const [selectedDishIds, setSelectedDishIds] = useState<Set<string>>(new Set());
   const [dishTypeFilters, setDishTypeFilters] = useState<Set<string>>(new Set());
@@ -180,8 +181,12 @@ export function RestaurantPage() {
     <div>
       {/* Hero */}
       <div className="restaurant-hero">
-        {restaurant.image_url ? (
-          <img src={restaurant.image_url} alt={restaurant.name} />
+        {restaurant.image_url && !heroImageError ? (
+          <img
+            src={restaurant.image_url}
+            alt={restaurant.name}
+            onError={() => setHeroImageError(true)}
+          />
         ) : (
           <div style={{
             width: '100%', height: '100%',
