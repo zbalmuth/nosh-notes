@@ -22,6 +22,31 @@ The "note" field should be empty if extraction was successful, or contain a brie
 
 Extract every item you can find. Include drinks, appetizers, desserts, sides, etc. Use the exact names from the menu when available.`;
 
+function isAllowedUrl(urlStr: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(urlStr);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  const h = parsed.hostname.toLowerCase();
+  // Block loopback, private ranges, link-local (cloud metadata), and internal hostnames
+  if (
+    h === 'localhost' ||
+    h === '0.0.0.0' ||
+    h === '::1' ||
+    h.endsWith('.internal') ||
+    h.endsWith('.local') ||
+    /^127\./.test(h) ||
+    /^10\./.test(h) ||
+    /^192\.168\./.test(h) ||
+    /^172\.(1[6-9]|2[0-9]|3[01])\./.test(h) ||
+    /^169\.254\./.test(h)
+  ) return false;
+  return true;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -30,6 +55,13 @@ serve(async (req) => {
   try {
     const { url } = await req.json();
     if (!url) throw new Error('URL is required');
+
+    if (!isAllowedUrl(url)) {
+      return new Response(
+        JSON.stringify({ error: 'URL not allowed', dishes: [], note: 'The provided URL is not allowed.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const apiKey = Deno.env.get('OPENAI_API_KEY');
     if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
