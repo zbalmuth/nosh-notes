@@ -34,7 +34,7 @@ export function detectLocation(): Promise<CachedLocation | null> {
   // Deduplicate concurrent calls — share the same in-flight request
   if (pending) return pending;
 
-  pending = new Promise((resolve) => {
+  const p = new Promise<CachedLocation | null>((resolve) => {
     if (!navigator.geolocation) { resolve(null); return; }
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
@@ -57,5 +57,6 @@ export function detectLocation(): Promise<CachedLocation | null> {
     );
   }).finally(() => { pending = null; });
 
-  return pending;
+  pending = p;
+  return p;
 }
