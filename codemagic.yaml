@@ -129,7 +129,7 @@ workflows:
           KEY_DIR="$HOME/.appstoreconnect/private_keys"
           KEY_FILE="$KEY_DIR/AuthKey_${APP_STORE_CONNECT_KEY_IDENTIFIER}.p8"
           mkdir -p "$KEY_DIR"
-          printf '%b\n' "$APP_STORE_CONNECT_PRIVATE_KEY" > "$KEY_FILE"
+          echo "$APP_STORE_CONNECT_PRIVATE_KEY" | base64 --decode > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
 
           IPA_PATH=$(find /tmp/ipa -name '*.ipa' | head -1)
