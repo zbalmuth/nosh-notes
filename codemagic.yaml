@@ -138,8 +138,7 @@ workflows:
             --path "$IPA_PATH" \
             --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
             --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
-            --private-key "@file:$KEY_FILE" \
-            --submit-to-testflight NO
+            --private-key "@file:$KEY_FILE"
 
           rm -f "$KEY_FILE"
 
