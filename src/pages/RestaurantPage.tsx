@@ -264,7 +264,7 @@ export function RestaurantPage() {
                       </div>
                     )}
                     {restaurant.menu_url && (
-                      <a href={restaurant.menu_url} target="_blank" rel="noopener"
+                      <a href={restaurant.menu_url} target="_blank" rel="noopener noreferrer"
                         style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: 'var(--electric-blue)' }}>
                         <BookOpen size={14} /> Menu
                       </a>
@@ -293,16 +293,16 @@ export function RestaurantPage() {
                 {(restaurant.website || restaurant.google_url || yelpUrl) && (
                   <div className="links-row" style={{ marginTop: 10, flexWrap: 'wrap' }}>
                     {restaurant.website && (
-                      <a href={restaurant.website} target="_blank" rel="noopener" className="link-chip">
+                      <a href={restaurant.website} target="_blank" rel="noopener noreferrer" className="link-chip">
                         <Globe size={14} /> Website
                       </a>
                     )}
                     {restaurant.google_url && (
-                      <a href={restaurant.google_url} target="_blank" rel="noopener" className="link-chip">
+                      <a href={restaurant.google_url} target="_blank" rel="noopener noreferrer" className="link-chip">
                         <ExternalLink size={14} /> Google
                       </a>
                     )}
-                    <a href={yelpUrl} target="_blank" rel="noopener" className="link-chip">
+                    <a href={yelpUrl} target="_blank" rel="noopener noreferrer" className="link-chip">
                       <ExternalLink size={14} /> Yelp
                     </a>
                   </div>

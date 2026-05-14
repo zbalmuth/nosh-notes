@@ -9,10 +9,35 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+async function requireAuth(req: Request): Promise<Response | null> {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized', dishes: [] }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: { Authorization: authHeader, apikey: supabaseAnonKey },
+  });
+  if (!res.ok) {
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized', dishes: [] }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  const authErr = await requireAuth(req);
+  if (authErr) return authErr;
 
   try {
     const { image } = await req.json();

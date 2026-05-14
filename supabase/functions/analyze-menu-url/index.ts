@@ -42,15 +42,45 @@ function isAllowedUrl(urlStr: string): boolean {
     /^10\./.test(h) ||
     /^192\.168\./.test(h) ||
     /^172\.(1[6-9]|2[0-9]|3[01])\./.test(h) ||
-    /^169\.254\./.test(h)
+    /^169\.254\./.test(h) ||
+    // Block IPv6 private/loopback ranges to prevent SSRF bypass via IPv6
+    /^::ffff:/i.test(h) ||   // IPv4-mapped (e.g. ::ffff:127.0.0.1 → loopback)
+    /^fc/i.test(h) ||        // unique local fc00::/7
+    /^fd/i.test(h) ||        // unique local fc00::/7
+    /^fe[89ab]/i.test(h)     // link-local fe80::/10
   ) return false;
   return true;
+}
+
+async function requireAuth(req: Request): Promise<Response | null> {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized', dishes: [], note: 'Authentication required.' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: { Authorization: authHeader, apikey: supabaseAnonKey },
+  });
+  if (!res.ok) {
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized', dishes: [], note: 'Authentication required.' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
+  return null;
 }
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  const authErr = await requireAuth(req);
+  if (authErr) return authErr;
 
   try {
     const { url } = await req.json();
