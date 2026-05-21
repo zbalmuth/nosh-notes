@@ -1,7 +1,8 @@
 const CACHE_KEY = 'nosh-location-cache';
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const PREF_KEY = 'nosh-location-pref';
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-interface CachedLocation {
+export interface CachedLocation {
   lat: number;
   lng: number;
   city: string;
@@ -11,7 +12,7 @@ interface CachedLocation {
 
 function getCached(): CachedLocation | null {
   try {
-    const raw = sessionStorage.getItem(CACHE_KEY);
+    const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const cached: CachedLocation = JSON.parse(raw);
     if (Date.now() - cached.ts > CACHE_TTL_MS) return null;
@@ -21,23 +22,34 @@ function getCached(): CachedLocation | null {
 
 function setCache(lat: number, lng: number, city: string, state: string) {
   try {
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify({ lat, lng, city, state, ts: Date.now() }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ lat, lng, city, state, ts: Date.now() }));
   } catch { /* ignore */ }
+}
+
+export function getLocationPref(): 'granted' | 'denied' | null {
+  return localStorage.getItem(PREF_KEY) as 'granted' | 'denied' | null;
+}
+
+function setLocationPref(pref: 'granted' | 'denied') {
+  localStorage.setItem(PREF_KEY, pref);
 }
 
 let pending: Promise<CachedLocation | null> | null = null;
 
-export function detectLocation(): Promise<CachedLocation | null> {
+// skipIfDenied: true for auto-detect, false for explicit user-initiated requests
+export function detectLocation(skipIfDenied = true): Promise<CachedLocation | null> {
+  if (skipIfDenied && getLocationPref() === 'denied') return Promise.resolve(null);
+
   const cached = getCached();
   if (cached) return Promise.resolve(cached);
 
-  // Deduplicate concurrent calls — share the same in-flight request
   if (pending) return pending;
 
   const p = new Promise<CachedLocation | null>((resolve) => {
     if (!navigator.geolocation) { resolve(null); return; }
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
+        setLocationPref('granted');
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         let city = '';
@@ -53,7 +65,10 @@ export function detectLocation(): Promise<CachedLocation | null> {
         setCache(lat, lng, city, state);
         resolve({ lat, lng, city, state, ts: Date.now() });
       },
-      () => resolve(null)
+      () => {
+        setLocationPref('denied');
+        resolve(null);
+      }
     );
   }).finally(() => { pending = null; });
 

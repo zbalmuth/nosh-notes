@@ -113,3 +113,21 @@ CREATE INDEX IF NOT EXISTS idx_restaurants_city ON restaurants(city);
 CREATE INDEX IF NOT EXISTS idx_restaurants_cuisine ON restaurants USING GIN(cuisine_tags);
 CREATE INDEX IF NOT EXISTS idx_dishes_restaurant_id ON dishes(restaurant_id);
 CREATE INDEX IF NOT EXISTS idx_dishes_user_id ON dishes(user_id);
+
+-- Explicit grants required from May 30 (new projects) / October 30 (existing projects)
+-- RLS policies still control actual row-level access.
+grant select, insert, update, delete on public.lists to anon;
+grant select, insert, update, delete on public.lists to authenticated;
+grant select, insert, update, delete on public.lists to service_role;
+
+grant select, insert, update, delete on public.restaurants to anon;
+grant select, insert, update, delete on public.restaurants to authenticated;
+grant select, insert, update, delete on public.restaurants to service_role;
+
+grant select, insert, update, delete on public.dishes to anon;
+grant select, insert, update, delete on public.dishes to authenticated;
+grant select, insert, update, delete on public.dishes to service_role;
+
+grant select, insert, update, delete on public.user_preferences to anon;
+grant select, insert, update, delete on public.user_preferences to authenticated;
+grant select, insert, update, delete on public.user_preferences to service_role;
