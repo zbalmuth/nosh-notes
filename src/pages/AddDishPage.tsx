@@ -200,6 +200,11 @@ export function AddDishPage() {
 
   const handleAnalyzeUrl = async () => {
     if (!menuUrl.trim() || !restaurantId) return;
+    const trimmedUrl = menuUrl.trim();
+    if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+      setUrlNote('Please enter a valid URL starting with http:// or https://');
+      return;
+    }
     setUrlLoading(true);
     setUrlNote('');
     try {

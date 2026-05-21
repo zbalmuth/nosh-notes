@@ -23,6 +23,11 @@ import { ScrollBar } from '../components/ScrollBar';
 import type { Restaurant, Dish } from '../types';
 import { DISH_TYPES } from '../types';
 
+function safeHref(url: string | undefined | null): string | undefined {
+  if (!url) return undefined;
+  return url.startsWith('http://') || url.startsWith('https://') ? url : undefined;
+}
+
 export function RestaurantPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -170,7 +175,7 @@ export function RestaurantPage() {
   }
 
   // Use stored Yelp URL if available, otherwise build a search URL as fallback
-  const yelpUrl = restaurant.yelp_url || (() => {
+  const yelpUrl = safeHref(restaurant.yelp_url) || (() => {
     const loc = [restaurant.city, restaurant.state].filter(Boolean).join(', ');
     return `https://www.yelp.com/search?find_desc=${encodeURIComponent(restaurant.name)}&find_loc=${encodeURIComponent(loc)}`;
   })();
@@ -263,8 +268,8 @@ export function RestaurantPage() {
                         </a>
                       </div>
                     )}
-                    {restaurant.menu_url && (
-                      <a href={restaurant.menu_url} target="_blank" rel="noopener noreferrer"
+                    {safeHref(restaurant.menu_url) && (
+                      <a href={safeHref(restaurant.menu_url)} target="_blank" rel="noopener noreferrer"
                         style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: 'var(--electric-blue)' }}>
                         <BookOpen size={14} /> Menu
                       </a>
@@ -292,13 +297,13 @@ export function RestaurantPage() {
                 {/* Links: Website | Google | Yelp */}
                 {(restaurant.website || restaurant.google_url || yelpUrl) && (
                   <div className="links-row" style={{ marginTop: 10, flexWrap: 'wrap' }}>
-                    {restaurant.website && (
-                      <a href={restaurant.website} target="_blank" rel="noopener noreferrer" className="link-chip">
+                    {safeHref(restaurant.website) && (
+                      <a href={safeHref(restaurant.website)} target="_blank" rel="noopener noreferrer" className="link-chip">
                         <Globe size={14} /> Website
                       </a>
                     )}
-                    {restaurant.google_url && (
-                      <a href={restaurant.google_url} target="_blank" rel="noopener noreferrer" className="link-chip">
+                    {safeHref(restaurant.google_url) && (
+                      <a href={safeHref(restaurant.google_url)} target="_blank" rel="noopener noreferrer" className="link-chip">
                         <ExternalLink size={14} /> Google
                       </a>
                     )}

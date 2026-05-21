@@ -136,7 +136,7 @@ export async function deleteDish(id: string) {
 // ─── Dish search (across all user's dishes) ─────────────────────────────────
 export async function searchDishes(query: string): Promise<Dish[]> {
   // Strip characters that PostgREST parses as filter-string delimiters to prevent injection
-  const safe = query.replace(/[(),"]/g, '').replace(/,/g, '');
+  const safe = query.replace(/[(),"]/g, '');
   const q = `%${safe}%`;
   const { data, error } = await supabase
     .from('dishes')
