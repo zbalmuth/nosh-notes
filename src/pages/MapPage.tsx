@@ -254,7 +254,6 @@ export function MapPage() {
   }, [filtered, mapReady, userLocation]);
 
   const activeFilterCount = [
-    selectedList !== 'all',
     selectedCity !== 'all',
     selectedCuisine !== 'all',
     selectedPrice !== 'all',
@@ -299,8 +298,33 @@ export function MapPage() {
         </button>
       </div>
 
+      {/* List chips — always visible */}
+      <div style={{
+        display: 'flex', gap: 8, padding: '8px 16px',
+        overflowX: 'auto', flexShrink: 0,
+        scrollbarWidth: 'none',
+      }}>
+        <button
+          className={`chip ${selectedList === 'all' ? 'active' : ''}`}
+          onClick={() => setSelectedList('all')}
+          style={{ flexShrink: 0 }}
+        >
+          All
+        </button>
+        {lists.map((l) => (
+          <button
+            key={l.id}
+            className={`chip ${selectedList === l.name ? 'active' : ''}`}
+            onClick={() => setSelectedList(selectedList === l.name ? 'all' : l.name)}
+            style={{ flexShrink: 0 }}
+          >
+            {l.name}
+          </button>
+        ))}
+      </div>
+
       {/* Quick filter chips */}
-      <div style={{ padding: '8px 20px 0', display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+      <div style={{ padding: '0 16px 8px', display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
         <button
           className={`chip ${favoritesOnly ? 'active' : ''}`}
           onClick={() => setFavoritesOnly(!favoritesOnly)}
@@ -308,11 +332,6 @@ export function MapPage() {
           <Star size={12} fill={favoritesOnly ? 'var(--white)' : 'none'} />
           Favorites
         </button>
-        {selectedList !== 'all' && (
-          <span className="chip active" style={{ fontSize: 11 }} onClick={() => setSelectedList('all')}>
-            {selectedList} <X size={10} style={{ marginLeft: 2 }} />
-          </span>
-        )}
         {selectedCuisine !== 'all' && (
           <span className="chip active" style={{ fontSize: 11 }} onClick={() => setSelectedCuisine('all')}>
             {selectedCuisine} <X size={10} style={{ marginLeft: 2 }} />
@@ -336,7 +355,7 @@ export function MapPage() {
       </div>
 
       {showFilters && (
-        <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
+        <div style={{ padding: '0 20px 12px', display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label>Distance{!userLocation && maxDistanceMi !== 'all' ? ' (locating…)' : ''}</label>
@@ -379,15 +398,6 @@ export function MapPage() {
                 <select value={selectedCuisine} onChange={(e) => setSelectedCuisine(e.target.value)}>
                   <option value="all">All Cuisines</option>
                   {cuisineTags.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label>List</label>
-              <div className="select-wrapper">
-                <select value={selectedList} onChange={(e) => setSelectedList(e.target.value)}>
-                  <option value="all">All Lists</option>
-                  {lists.map((l) => <option key={l.id} value={l.name}>{l.name}</option>)}
                 </select>
               </div>
             </div>
