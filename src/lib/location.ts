@@ -34,18 +34,8 @@ function setLocationPref(pref: 'granted' | 'denied') {
   localStorage.setItem(PREF_KEY, pref);
 }
 
-let pending: Promise<CachedLocation | null> | null = null;
-
-// skipIfDenied: true for auto-detect, false for explicit user-initiated requests
-export function detectLocation(skipIfDenied = true): Promise<CachedLocation | null> {
-  if (skipIfDenied && getLocationPref() === 'denied') return Promise.resolve(null);
-
-  const cached = getCached();
-  if (cached) return Promise.resolve(cached);
-
-  if (pending) return pending;
-
-  const p = new Promise<CachedLocation | null>((resolve) => {
+async function doGetPosition(): Promise<CachedLocation | null> {
+  return new Promise((resolve) => {
     if (!navigator.geolocation) { resolve(null); return; }
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
@@ -68,10 +58,60 @@ export function detectLocation(skipIfDenied = true): Promise<CachedLocation | nu
       () => {
         setLocationPref('denied');
         resolve(null);
-      }
+      },
+      { timeout: 10000 }
     );
-  }).finally(() => { pending = null; });
+  });
+}
 
-  pending = p;
-  return p;
+let pending: Promise<CachedLocation | null> | null = null;
+
+/**
+ * Detect the user's location.
+ *
+ * skipIfDenied=true  → auto-detect mode:
+ *   - Never shows a browser/OS permission dialog.
+ *   - Only proceeds if the Permissions API confirms permission is already 'granted',
+ *     or if we stored 'granted' from a previous explicit request.
+ *   - Returns null silently if permission is unknown or denied.
+ *
+ * skipIfDenied=false → explicit/user-initiated mode:
+ *   - Will show the permission dialog if needed (user tapped a button).
+ */
+export async function detectLocation(skipIfDenied = true): Promise<CachedLocation | null> {
+  // Hard stop: user previously denied
+  if (skipIfDenied && getLocationPref() === 'denied') return null;
+
+  // Return from cache if fresh
+  const cached = getCached();
+  if (cached) return cached;
+
+  // For auto-detect: check if permission is already granted before potentially prompting
+  if (skipIfDenied) {
+    if (navigator.permissions) {
+      try {
+        const { state } = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+        if (state === 'denied') {
+          setLocationPref('denied');
+          return null;
+        }
+        if (state !== 'granted') {
+          // 'prompt' — permission not yet decided; don't auto-ask, wait for explicit user action
+          return null;
+        }
+        // state === 'granted' — fall through to get position silently
+      } catch {
+        // Permissions API unsupported; only proceed if we've previously confirmed 'granted'
+        if (getLocationPref() !== 'granted') return null;
+      }
+    } else {
+      // No Permissions API (older browsers); fall back to our stored pref
+      if (getLocationPref() !== 'granted') return null;
+    }
+  }
+
+  // Deduplicate concurrent calls
+  if (pending) return pending;
+  pending = doGetPosition().finally(() => { pending = null; });
+  return pending;
 }

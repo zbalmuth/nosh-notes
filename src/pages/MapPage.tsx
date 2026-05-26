@@ -186,28 +186,31 @@ export function MapPage() {
     };
   }, [saveMapView]);
 
-  // Auto-detect user location (skip if previously denied)
+  // Auto-detect user location — never shows a prompt (skipIfDenied=true).
+  // Only succeeds if the OS/browser has already granted permission.
   useEffect(() => {
-    if (getLocationPref() === 'denied') return;
-    detectLocation().then((loc) => {
+    detectLocation(true).then((loc) => {
       if (!loc) return;
       setUserLocation({ lat: loc.lat, lng: loc.lng });
-      applyUserMarker(loc.lat, loc.lng);
     });
-  }, [applyUserMarker]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Auto-get location when distance filter is enabled and we don't have it yet
+  // Sync user marker whenever we have both a location and a ready map
+  useEffect(() => {
+    if (!mapReady || !userLocation) return;
+    applyUserMarker(userLocation.lat, userLocation.lng);
+  }, [mapReady, userLocation, applyUserMarker]);
+
+  // When distance filter is enabled and we have no location yet, explicitly request it
   useEffect(() => {
     if (maxDistanceMi === 'all' || userLocation) return;
     setLocating(true);
     detectLocation(false).then((loc) => {
-      if (loc) {
-        setUserLocation({ lat: loc.lat, lng: loc.lng });
-        applyUserMarker(loc.lat, loc.lng);
-      }
+      if (loc) setUserLocation({ lat: loc.lat, lng: loc.lng });
       setLocating(false);
     }).catch(() => setLocating(false));
-  }, [maxDistanceMi, userLocation, applyUserMarker]);
+  }, [maxDistanceMi, userLocation]);
 
   // Update markers when filtered restaurants change
   useEffect(() => {
