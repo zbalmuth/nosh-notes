@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Filter, Star, X, LocateFixed } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { supabase } from '../lib/supabase';
-import { detectLocation, getLocationPref } from '../lib/location';
+import { detectLocation } from '../lib/location';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Restaurant } from '../types';
