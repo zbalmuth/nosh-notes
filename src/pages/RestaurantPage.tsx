@@ -16,8 +16,13 @@ import {
   Sparkles,
   ChevronDown,
   ChevronUp,
+  Pencil,
+  RefreshCw,
+  X,
+  Tag,
 } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
+import { searchRestaurants } from '../lib/api';
 import { DishCard } from '../components/DishCard';
 import { ScrollBar } from '../components/ScrollBar';
 import type { Restaurant, Dish } from '../types';
@@ -33,9 +38,12 @@ export function RestaurantPage() {
   const navigate = useNavigate();
   const {
     restaurants,
+    lists,
+    cuisineTags: allCuisineTags,
     getDishes,
     deleteDish,
     deleteRestaurant,
+    updateRestaurant,
     toggleFavorite,
     showToast,
   } = useApp();
@@ -51,6 +59,24 @@ export function RestaurantPage() {
   const [sortReversed, setSortReversed] = useState(false);
   const [wantToTryOnly, setWantToTryOnly] = useState(false);
   const [infoExpanded, setInfoExpanded] = useState(false);
+
+  // Edit mode
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editCity, setEditCity] = useState('');
+  const [editState, setEditState] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editWebsite, setEditWebsite] = useState('');
+  const [editMenuUrl, setEditMenuUrl] = useState('');
+  const [editImageUrl, setEditImageUrl] = useState('');
+  const [editPriceLevel, setEditPriceLevel] = useState('');
+  const [editCuisines, setEditCuisines] = useState<string[]>([]);
+  const [editLists, setEditLists] = useState<string[]>([]);
+  const [editNewCuisine, setEditNewCuisine] = useState('');
+  const [showCuisinePicker, setShowCuisinePicker] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     const r = restaurants.find((r) => r.id === id);
@@ -170,6 +196,78 @@ export function RestaurantPage() {
     exitDishSelectionMode();
   };
 
+  const openEdit = () => {
+    if (!restaurant) return;
+    setEditName(restaurant.name);
+    setEditAddress(restaurant.address || '');
+    setEditCity(restaurant.city || '');
+    setEditState(restaurant.state || '');
+    setEditPhone(restaurant.phone || '');
+    setEditWebsite(restaurant.website || '');
+    setEditMenuUrl(restaurant.menu_url || '');
+    setEditImageUrl(restaurant.image_url || '');
+    setEditPriceLevel(restaurant.price_level || '');
+    setEditCuisines(restaurant.cuisine_tags || []);
+    setEditLists(restaurant.lists || []);
+    setShowCuisinePicker(false);
+    setEditing(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!restaurant || !editName.trim()) return;
+    setSaving(true);
+    try {
+      await updateRestaurant(restaurant.id, {
+        name: editName.trim(),
+        address: editAddress,
+        city: editCity,
+        state: editState,
+        phone: editPhone,
+        website: editWebsite,
+        menu_url: editMenuUrl,
+        image_url: editImageUrl,
+        price_level: editPriceLevel,
+        cuisine_tags: editCuisines,
+        lists: editLists,
+      });
+      setHeroImageError(false);
+      setEditing(false);
+      showToast('Saved!');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (!restaurant) return;
+    setRefreshing(true);
+    try {
+      const results = await searchRestaurants(restaurant.name, 'google', restaurant.city || undefined);
+      const match = results[0];
+      if (!match) { showToast('No results found'); return; }
+      await updateRestaurant(restaurant.id, {
+        image_url: match.image_url || restaurant.image_url,
+        photos: match.photos?.length ? match.photos : restaurant.photos,
+        external_rating: match.rating ?? restaurant.external_rating,
+        price_level: match.price_level || restaurant.price_level,
+        address: match.address || restaurant.address,
+        phone: match.phone || restaurant.phone,
+        website: match.website || restaurant.website,
+        yelp_url: match.yelp_url || restaurant.yelp_url,
+        google_url: match.google_url || restaurant.google_url,
+        menu_url: match.menu_url || restaurant.menu_url,
+        latitude: match.latitude ?? restaurant.latitude,
+        longitude: match.longitude ?? restaurant.longitude,
+      });
+      setHeroImageError(false);
+      showToast('Refreshed from Google!');
+    } catch {
+      showToast('Refresh failed');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   if (!restaurant) {
     return <div className="loading-spinner" style={{ marginTop: 60 }} />;
   }
@@ -210,6 +308,21 @@ export function RestaurantPage() {
               <ArrowLeft size={24} />
             </button>
             <h1 style={{ flex: 1 }}>{restaurant.name}</h1>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              style={{ background: 'none', border: 'none', color: 'var(--white)', padding: 4, opacity: refreshing ? 0.5 : 1 }}
+              title="Refresh from Google"
+            >
+              <RefreshCw size={18} style={refreshing ? { animation: 'spin 1s linear infinite' } : undefined} />
+            </button>
+            <button
+              onClick={openEdit}
+              style={{ background: 'none', border: 'none', color: 'var(--white)', padding: 4 }}
+              title="Edit restaurant"
+            >
+              <Pencil size={18} />
+            </button>
             <button
               className={`favorite-btn ${restaurant.is_favorite ? 'active' : ''}`}
               onClick={() => toggleFavorite(restaurant.id, !restaurant.is_favorite)}
@@ -505,6 +618,201 @@ export function RestaurantPage() {
       >
         <Plus size={28} />
       </button>
+
+      {/* Edit Restaurant Sheet */}
+      {editing && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 3000,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+          }}
+          onClick={() => setEditing(false)}
+        >
+          <div
+            style={{
+              background: 'var(--bg-primary)',
+              borderRadius: '20px 20px 0 0',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              padding: '20px 20px 48px',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ fontFamily: "'Righteous', cursive", fontSize: 20, color: 'var(--hot-pink)', flex: 1 }}>
+                Edit Restaurant
+              </h2>
+              <button onClick={() => setEditing(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', padding: 4 }}>
+                <X size={22} />
+              </button>
+            </div>
+
+            {/* Photo selector */}
+            {restaurant.photos?.length > 0 && (
+              <div className="form-group">
+                <label>Photo</label>
+                <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 8 }}>
+                  {restaurant.photos.map((p, i) => (
+                    <img
+                      key={i}
+                      src={p}
+                      alt=""
+                      onClick={() => setEditImageUrl(p)}
+                      style={{
+                        width: 72, height: 72, objectFit: 'cover', flexShrink: 0,
+                        borderRadius: 8,
+                        border: editImageUrl === p ? '3px solid var(--hot-pink)' : '2px solid var(--border)',
+                        cursor: 'pointer',
+                        opacity: editImageUrl === p ? 1 : 0.7,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="form-group">
+              <label>Image URL</label>
+              <input className="input" placeholder="https://..." value={editImageUrl} onChange={(e) => setEditImageUrl(e.target.value)} />
+            </div>
+
+            <div className="form-group">
+              <label>Name *</label>
+              <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Address</label>
+              <input className="input" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div className="form-group" style={{ flex: 2 }}>
+                <label>City</label>
+                <input className="input" value={editCity} onChange={(e) => setEditCity(e.target.value)} />
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label>State</label>
+                <input className="input" value={editState} onChange={(e) => setEditState(e.target.value)} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Phone</label>
+              <input className="input" type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Website</label>
+              <input className="input" type="url" placeholder="https://..." value={editWebsite} onChange={(e) => setEditWebsite(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Menu URL</label>
+              <input className="input" type="url" placeholder="https://..." value={editMenuUrl} onChange={(e) => setEditMenuUrl(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Price Level</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['$', '$$', '$$$', '$$$$'].map((p) => (
+                  <button key={p} className={`chip ${editPriceLevel === p ? 'active' : ''}`} onClick={() => setEditPriceLevel(editPriceLevel === p ? '' : p)}>{p}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Lists */}
+            <div className="form-group">
+              <label>Lists</label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {lists.map((list) => (
+                  <button
+                    key={list.id}
+                    className={`chip ${editLists.includes(list.name) ? 'active' : ''}`}
+                    onClick={() => setEditLists((prev) => prev.includes(list.name) ? prev.filter((l) => l !== list.name) : [...prev, list.name])}
+                  >
+                    {list.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Cuisine Tags */}
+            <div className="form-group">
+              <label>Cuisines</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: editCuisines.length > 0 ? 10 : 0 }}>
+                {editCuisines.map((tag) => (
+                  <button
+                    key={tag}
+                    onClick={() => setEditCuisines((prev) => prev.filter((t) => t !== tag))}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                  >
+                    <Tag size={11} color="var(--hot-pink)" />
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{tag}</span>
+                    <X size={10} color="var(--text-muted)" />
+                  </button>
+                ))}
+              </div>
+              {!showCuisinePicker ? (
+                <button
+                  onClick={() => setShowCuisinePicker(true)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: '1px dashed var(--border)', borderRadius: 20, padding: '4px 12px', fontSize: 13, color: 'var(--text-muted)', cursor: 'pointer' }}
+                >
+                  <Plus size={13} /> Add cuisine
+                </button>
+              ) : (
+                <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg-secondary)', padding: 12 }}>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                    <input
+                      className="input"
+                      placeholder="Type a cuisine..."
+                      value={editNewCuisine}
+                      onChange={(e) => setEditNewCuisine(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && editNewCuisine.trim()) {
+                          if (!editCuisines.includes(editNewCuisine.trim())) setEditCuisines((prev) => [...prev, editNewCuisine.trim()]);
+                          setEditNewCuisine('');
+                          setShowCuisinePicker(false);
+                        }
+                      }}
+                      autoFocus
+                      style={{ flex: 1, fontSize: 13 }}
+                    />
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        if (editNewCuisine.trim() && !editCuisines.includes(editNewCuisine.trim())) setEditCuisines((prev) => [...prev, editNewCuisine.trim()]);
+                        setEditNewCuisine('');
+                        setShowCuisinePicker(false);
+                      }}
+                      style={{ padding: '8px 12px' }}
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {Array.from(new Set([...allCuisineTags, ...editCuisines])).sort().filter((t) => !editCuisines.includes(t)).map((tag) => (
+                      <button
+                        key={tag}
+                        className="chip"
+                        onClick={() => { setEditCuisines((prev) => [...prev, tag]); setShowCuisinePicker(false); }}
+                        style={{ fontSize: 12 }}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => setShowCuisinePicker(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer', padding: '8px 0 0' }}>Done</button>
+                </div>
+              )}
+            </div>
+
+            <button
+              className="btn btn-primary"
+              style={{ width: '100%', marginTop: 8 }}
+              onClick={handleSaveEdit}
+              disabled={!editName.trim() || saving}
+            >
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
