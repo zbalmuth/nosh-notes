@@ -22,6 +22,8 @@ The "note" field should be empty if extraction was successful, or contain a brie
 
 Extract every item you can find. Include drinks, appetizers, desserts, sides, etc. Use the exact names from the menu when available.`;
 
+const MAX_FETCH_BYTES = 10 * 1024 * 1024; // 10 MB cap on fetched content
+
 function isAllowedUrl(urlStr: string): boolean {
   let parsed: URL;
   try {
@@ -109,14 +111,32 @@ serve(async (req) => {
         },
         redirect: 'follow',
       });
+      // Validate the final URL after redirects to prevent SSRF bypass via open redirects
+      if (!isAllowedUrl(res.url)) {
+        return new Response(
+          JSON.stringify({ error: 'URL redirected to a disallowed destination', dishes: [], note: 'The URL redirected to a disallowed destination.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
       contentType = (res.headers.get('content-type') || '').toLowerCase();
+      const contentLen = parseInt(res.headers.get('content-length') || '0', 10);
 
       if (contentType.includes('image/')) {
         // It's an image — read as base64
-        responseData = await res.arrayBuffer();
+        if (contentLen > MAX_FETCH_BYTES) {
+          // oversized — fall through to GPT knowledge fallback
+        } else {
+          responseData = await res.arrayBuffer();
+          if (responseData.byteLength > MAX_FETCH_BYTES) responseData = null;
+        }
       } else if (contentType.includes('application/pdf')) {
         // It's a PDF — read as base64
-        responseData = await res.arrayBuffer();
+        if (contentLen > MAX_FETCH_BYTES) {
+          // oversized — fall through to GPT knowledge fallback
+        } else {
+          responseData = await res.arrayBuffer();
+          if (responseData.byteLength > MAX_FETCH_BYTES) responseData = null;
+        }
       } else {
         // Assume HTML
         htmlText = await res.text();
@@ -127,7 +147,7 @@ serve(async (req) => {
 
     let messages: unknown[];
 
-    if (contentType.includes('image/')) {
+    if (contentType.includes('image/') && responseData) {
       // --- IMAGE MENU: Send directly to GPT-4o vision ---
       const base64 = base64Encode(new Uint8Array(responseData!));
       const mimeType = contentType.split(';')[0].trim();
@@ -141,7 +161,7 @@ serve(async (req) => {
           ],
         },
       ];
-    } else if (contentType.includes('application/pdf')) {
+    } else if (contentType.includes('application/pdf') && responseData) {
       // --- PDF MENU: Upload to OpenAI Files API, then reference in chat ---
       const base64 = base64Encode(new Uint8Array(responseData!));
 
