@@ -27,6 +27,15 @@ const LA_AREA_CITIES = new Set([
   'alhambra','monterey park','san gabriel','arcadia','monrovia',
 ]);
 
+async function resolvePhotoUrl(urlWithKey: string): Promise<string> {
+  try {
+    const res = await fetch(urlWithKey, { redirect: 'follow' });
+    return res.url;
+  } catch {
+    return '';
+  }
+}
+
 async function searchGooglePlace(name: string, address: string, apiKey: string) {
   const query = `${name} ${address}`;
   const res = await fetch(
@@ -47,15 +56,17 @@ async function searchGooglePlace(name: string, address: string, apiKey: string) 
   } catch {}
 
   const photoRef = place.photos?.[0]?.photo_reference;
+  // Follow the redirect so the stored URL is a CDN URL without the API key embedded
   const imageUrl = photoRef
-    ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoRef}&key=${apiKey}`
+    ? await resolvePhotoUrl(`https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoRef}&key=${apiKey}`)
     : '';
 
-  // Get additional photos
+  // Get additional photos — resolve each to a CDN URL so the API key is never stored
   const photos: string[] = [];
   if (details.photos) {
     for (const p of details.photos.slice(0, 5)) {
-      photos.push(`https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=${p.photo_reference}&key=${apiKey}`);
+      const cdnUrl = await resolvePhotoUrl(`https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=${p.photo_reference}&key=${apiKey}`);
+      if (cdnUrl) photos.push(cdnUrl);
     }
   }
 
