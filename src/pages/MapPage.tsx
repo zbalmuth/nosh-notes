@@ -38,6 +38,10 @@ function fmtDistance(km: number): string {
   return mi < 10 ? `${mi.toFixed(1)} mi` : `${Math.round(mi)} mi`;
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 export function MapPage() {
   const navigate = useNavigate();
   const { restaurants, lists, cuisineTags, cities } = useApp();
@@ -232,13 +236,14 @@ export function MapPage() {
 
       const marker = L.marker([r.latitude, r.longitude], { icon: markerIcon });
 
+      const cityState = [r.city, r.state].filter(Boolean).map(escapeHtml).join(', ');
       marker.bindPopup(`
         <div style="font-family: sans-serif; min-width: 120px;">
-          <strong style="font-size: 14px;">${r.name}</strong>
-          <br/><span style="font-size: 12px; color: #666;">${r.city || ''}${r.state ? ', ' + r.state : ''}</span>
-          ${r.price_level ? `<span style="margin-left:6px;font-size:12px;color:#388e3c;font-weight:600;">${r.price_level}</span>` : ''}
+          <strong style="font-size: 14px;">${escapeHtml(r.name)}</strong>
+          <br/><span style="font-size: 12px; color: #666;">${cityState}</span>
+          ${r.price_level ? `<span style="margin-left:6px;font-size:12px;color:#388e3c;font-weight:600;">${escapeHtml(r.price_level)}</span>` : ''}
           ${r.external_rating != null ? `<br/><span style="font-size:11px;color:#f9a825;">★ ${r.external_rating.toFixed(1)}</span>` : ''}
-          ${r.cuisine_tags?.length ? '<br/><span style="font-size: 11px; color: #999;">' + r.cuisine_tags.slice(0, 2).join(', ') + '</span>' : ''}
+          ${r.cuisine_tags?.length ? '<br/><span style="font-size: 11px; color: #999;">' + r.cuisine_tags.slice(0, 2).map(escapeHtml).join(', ') + '</span>' : ''}
           ${distStr}
         </div>
       `, { closeButton: false });

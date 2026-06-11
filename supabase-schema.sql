@@ -116,18 +116,20 @@ CREATE INDEX IF NOT EXISTS idx_dishes_user_id ON dishes(user_id);
 
 -- Explicit grants required from May 30 (new projects) / October 30 (existing projects)
 -- RLS policies still control actual row-level access.
-grant select, insert, update, delete on public.lists to anon;
+-- anon gets read-only; write access is granted only to authenticated/service_role.
+-- RLS policies still enforce row-level ownership for all roles.
+grant select on public.lists to anon;
 grant select, insert, update, delete on public.lists to authenticated;
 grant select, insert, update, delete on public.lists to service_role;
 
-grant select, insert, update, delete on public.restaurants to anon;
+grant select on public.restaurants to anon;
 grant select, insert, update, delete on public.restaurants to authenticated;
 grant select, insert, update, delete on public.restaurants to service_role;
 
-grant select, insert, update, delete on public.dishes to anon;
+grant select on public.dishes to anon;
 grant select, insert, update, delete on public.dishes to authenticated;
 grant select, insert, update, delete on public.dishes to service_role;
 
-grant select, insert, update, delete on public.user_preferences to anon;
+grant select on public.user_preferences to anon;
 grant select, insert, update, delete on public.user_preferences to authenticated;
 grant select, insert, update, delete on public.user_preferences to service_role;
