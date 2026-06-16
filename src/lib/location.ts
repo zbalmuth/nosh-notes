@@ -1,3 +1,6 @@
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
+
 const PREF_KEY = 'nosh-location-pref';
 
 export interface UserLocation {
@@ -15,7 +18,61 @@ function setLocationPref(pref: 'granted' | 'denied') {
   localStorage.setItem(PREF_KEY, pref);
 }
 
-async function doGetPosition(): Promise<UserLocation | null> {
+// Reverse-geocode coordinates to a human-readable city/state.
+async function reverseGeocode(lat: number, lng: number): Promise<{ city: string; state: string }> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`
+    );
+    const data = await res.json();
+    return {
+      city: data.address?.city || data.address?.town || data.address?.village || '',
+      state: data.address?.state || '',
+    };
+  } catch {
+    return { city: '', state: '' };
+  }
+}
+
+// ── Native path (Capacitor / CoreLocation) ──────────────────────────────────
+// Uses the real native permission, which iOS persists across launches: once the
+// user grants "While Using the App", checkPermissions() returns 'granted' and we
+// never prompt again. We only call requestPermissions() (the dialog) when the
+// status is still 'prompt' AND the caller allows prompting (skipIfDenied=false).
+async function detectNative(skipIfDenied: boolean): Promise<UserLocation | null> {
+  let status = (await Geolocation.checkPermissions()).location;
+
+  if (status === 'denied') {
+    setLocationPref('denied');
+    return null;
+  }
+
+  if (status !== 'granted') {
+    // status is 'prompt' / 'prompt-with-rationale'
+    if (skipIfDenied) return null; // auto-detect: never show the dialog
+    status = (await Geolocation.requestPermissions()).location;
+    if (status !== 'granted') {
+      setLocationPref('denied');
+      return null;
+    }
+  }
+
+  setLocationPref('granted');
+  try {
+    const pos = await Geolocation.getCurrentPosition({
+      enableHighAccuracy: true,
+      timeout: 10000,
+    });
+    const { latitude: lat, longitude: lng } = pos.coords;
+    const { city, state } = await reverseGeocode(lat, lng);
+    return { lat, lng, city, state };
+  } catch {
+    return null;
+  }
+}
+
+// ── Web path (browser navigator.geolocation) ────────────────────────────────
+async function doGetPositionWeb(): Promise<UserLocation | null> {
   return new Promise((resolve) => {
     if (!navigator.geolocation) { resolve(null); return; }
     navigator.geolocation.getCurrentPosition(
@@ -23,16 +80,7 @@ async function doGetPosition(): Promise<UserLocation | null> {
         setLocationPref('granted');
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        let city = '';
-        let state = '';
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`
-          );
-          const data = await res.json();
-          city = data.address?.city || data.address?.town || data.address?.village || '';
-          state = data.address?.state || '';
-        } catch { /* ignore */ }
+        const { city, state } = await reverseGeocode(lat, lng);
         resolve({ lat, lng, city, state });
       },
       () => {
@@ -44,18 +92,7 @@ async function doGetPosition(): Promise<UserLocation | null> {
   });
 }
 
-let pending: Promise<UserLocation | null> | null = null;
-
-/**
- * Detect the user's current location.
- *
- * skipIfDenied=true  → auto-detect mode: never shows a permission dialog,
- *   only proceeds if the OS/browser permission is already 'granted'.
- *
- * skipIfDenied=false → explicit/user-initiated mode: will show the
- *   permission dialog if needed.
- */
-export async function detectLocation(skipIfDenied = true): Promise<UserLocation | null> {
+async function detectWeb(skipIfDenied: boolean): Promise<UserLocation | null> {
   if (skipIfDenied && getLocationPref() === 'denied') return null;
 
   if (skipIfDenied) {
@@ -72,7 +109,27 @@ export async function detectLocation(skipIfDenied = true): Promise<UserLocation 
     }
   }
 
+  return doGetPositionWeb();
+}
+
+let pending: Promise<UserLocation | null> | null = null;
+
+/**
+ * Detect the user's current location.
+ *
+ * skipIfDenied=true  → auto-detect mode: never shows a permission dialog,
+ *   only proceeds if location permission is already 'granted'.
+ *
+ * skipIfDenied=false → explicit/user-initiated mode: will show the
+ *   permission dialog if the status is still 'prompt'.
+ *
+ * On native (Capacitor) this uses CoreLocation, whose permission iOS persists
+ * across launches — so after the first grant it returns the live position
+ * silently, without re-prompting. On web it uses navigator.geolocation.
+ */
+export async function detectLocation(skipIfDenied = true): Promise<UserLocation | null> {
   if (pending) return pending;
-  pending = doGetPosition().finally(() => { pending = null; });
+  const run = Capacitor.isNativePlatform() ? detectNative(skipIfDenied) : detectWeb(skipIfDenied);
+  pending = run.finally(() => { pending = null; });
   return pending;
 }
