@@ -35,9 +35,12 @@ export function SearchPage() {
     inputRef.current?.focus();
   }, []);
 
-  // Auto-detect location once (cached across components)
+  // Acquire location for "Discover Nearby". Use active mode (skipIfDenied=false)
+  // so we get a real GPS fix even when the browser/WebView permissions API
+  // reports 'prompt' (common in the Capacitor iOS WebView) — silent mode would
+  // bail and leave the search un-located, producing random worldwide results.
   useEffect(() => {
-    detectLocation().then((loc) => {
+    detectLocation(false).then((loc) => {
       if (!loc) return;
       setLatitude(loc.lat);
       setLongitude(loc.lng);
