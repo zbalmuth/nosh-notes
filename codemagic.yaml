@@ -38,6 +38,12 @@ workflows:
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST"
           /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string 'Used to show your location on the map'" "$PLIST" 2>/dev/null || \
           /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription 'Used to show your location on the map'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Used to take photos of menus, receipts, and dishes to scan them.'" "$PLIST" 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription 'Used to take photos of menus, receipts, and dishes to scan them.'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Used to select photos of menus, receipts, and dishes to scan them.'" "$PLIST" 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Set :NSPhotoLibraryUsageDescription 'Used to select photos of menus, receipts, and dishes to scan them.'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryAddUsageDescription string 'Used to save photos to your library.'" "$PLIST" 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Set :NSPhotoLibraryAddUsageDescription 'Used to save photos to your library.'" "$PLIST"
 
           PBXPROJ="ios/App/App.xcodeproj/project.pbxproj"
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ"
