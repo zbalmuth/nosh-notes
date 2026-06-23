@@ -12,8 +12,8 @@ import {
   Copy,
   ArrowRight,
   Share2,
-  ArrowDownAZ,
-  ArrowUpZA,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { RestaurantCard } from '../components/RestaurantCard';
@@ -61,7 +61,8 @@ export function HomePage() {
   const [selectedCity, setSelectedCity] = useState<string>(saved.selectedCity || 'all');
   const [selectedCuisine, setSelectedCuisine] = useState<string>(saved.selectedCuisine || 'all');
   const [favoritesOnly, setFavoritesOnly] = useState(saved.favoritesOnly || false);
-  const [sortOrder, setSortOrder] = useState<'az' | 'za'>(saved.sortOrder || 'az');
+  const [sortBy, setSortBy] = useState<'name' | 'created' | 'updated'>(saved.sortBy || 'name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(saved.sortDir || 'asc');
   const [showFilters, setShowFilters] = useState(saved.showFilters || false);
   const [showListDropdown, setShowListDropdown] = useState(false);
   const [showNewList, setShowNewList] = useState(false);
@@ -69,8 +70,19 @@ export function HomePage() {
 
   // Persist filter state to localStorage
   useEffect(() => {
-    saveFilters({ selectedList, selectedCity, selectedCuisine, favoritesOnly, showFilters, sortOrder });
-  }, [selectedList, selectedCity, selectedCuisine, favoritesOnly, showFilters, sortOrder]);
+    saveFilters({ selectedList, selectedCity, selectedCuisine, favoritesOnly, showFilters, sortBy, sortDir });
+  }, [selectedList, selectedCity, selectedCuisine, favoritesOnly, showFilters, sortBy, sortDir]);
+
+  // Tap a sort field to select it; tap the active one again to flip direction.
+  const handleSort = (field: 'name' | 'created' | 'updated') => {
+    if (sortBy === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      // Names read best A→Z; dates read best newest-first.
+      setSortDir(field === 'name' ? 'asc' : 'desc');
+    }
+  };
 
   // React to search param changes (e.g. clicking Search in bottom nav while already on /)
   useEffect(() => {
@@ -250,12 +262,19 @@ export function HomePage() {
     }
 
     result = [...result].sort((a, b) => {
-      const cmp = a.name.localeCompare(b.name);
-      return sortOrder === 'az' ? cmp : -cmp;
+      let cmp: number;
+      if (sortBy === 'created') {
+        cmp = a.created_at.localeCompare(b.created_at);
+      } else if (sortBy === 'updated') {
+        cmp = a.updated_at.localeCompare(b.updated_at);
+      } else {
+        cmp = a.name.localeCompare(b.name);
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
     });
 
     return result;
-  }, [restaurants, favoritesOnly, selectedList, selectedCity, selectedCuisine, searchQuery, sortOrder]);
+  }, [restaurants, favoritesOnly, selectedList, selectedCity, selectedCuisine, searchQuery, sortBy, sortDir]);
 
   const handleCreateList = async () => {
     if (!newListName.trim()) return;
@@ -464,7 +483,7 @@ export function HomePage() {
       )}
 
       {/* Filters */}
-      <div style={{ padding: '8px 20px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ padding: '8px 20px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', rowGap: 8 }}>
         <button
           className={`chip ${favoritesOnly ? 'active' : ''}`}
           onClick={() => setFavoritesOnly(!favoritesOnly)}
@@ -472,13 +491,20 @@ export function HomePage() {
           <Star size={12} fill={favoritesOnly ? 'var(--white)' : 'none'} />
           Favorites
         </button>
-        <button
-          className="chip"
-          onClick={() => setSortOrder(sortOrder === 'az' ? 'za' : 'az')}
-        >
-          {sortOrder === 'az' ? <ArrowDownAZ size={12} /> : <ArrowUpZA size={12} />}
-          {sortOrder === 'az' ? 'A → Z' : 'Z → A'}
-        </button>
+        {([
+          { field: 'name', label: 'Name' },
+          { field: 'created', label: 'Added' },
+          { field: 'updated', label: 'Modified' },
+        ] as const).map(({ field, label }) => (
+          <button
+            key={field}
+            className={`chip ${sortBy === field ? 'active' : ''}`}
+            onClick={() => handleSort(field)}
+          >
+            {label}
+            {sortBy === field && (sortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+          </button>
+        ))}
         <button
           className={`chip ${showFilters ? 'active' : ''}`}
           onClick={() => setShowFilters(!showFilters)}
