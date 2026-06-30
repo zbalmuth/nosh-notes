@@ -17,7 +17,27 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
-const EMPTY = { photos: [], hours: null, menu_url: '', website: '', phone: '' };
+const EMPTY = { photos: [], hours: null, menu_url: '', website: '', phone: '', highlights: '' };
+
+// Google Maps "highlights" (must-order dishes / vibe) only exist as the Places
+// API (New) AI place summary — there is no structured top-dishes field. This
+// hits the v1 endpoint; if the project hasn't enabled "Places API (New)" it
+// 403s and we just return '' (the dialog hides the section).
+async function googleHighlights(placeId: string, apiKey: string): Promise<string> {
+  try {
+    const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
+      headers: {
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'generativeSummary.overview,editorialSummary',
+      },
+    });
+    if (!res.ok) return '';
+    const d = await res.json();
+    return d.generativeSummary?.overview?.text || d.editorialSummary?.text || '';
+  } catch {
+    return '';
+  }
+}
 
 async function requireAuth(req: Request): Promise<Response | null> {
   const authHeader = req.headers.get('Authorization');
@@ -71,8 +91,10 @@ async function googleDetails(placeId: string) {
     .slice(0, 8)
     .map((p: { photo_reference: string }) => p.photo_reference)
     .filter(Boolean);
-  const photos = (
-    await Promise.all(
+
+  // Resolve photos and fetch the AI highlights summary concurrently.
+  const [photos, highlights] = await Promise.all([
+    Promise.all(
       refs.map(async (ref) => {
         try {
           const photoRes = await fetch(
@@ -83,8 +105,9 @@ async function googleDetails(placeId: string) {
           return '';
         }
       })
-    )
-  ).filter(Boolean);
+    ).then((urls) => urls.filter(Boolean)),
+    googleHighlights(placeId, apiKey),
+  ]);
 
   const hours = r.opening_hours
     ? { open_now: r.opening_hours.open_now, weekday_text: r.opening_hours.weekday_text || [] }
@@ -93,6 +116,7 @@ async function googleDetails(placeId: string) {
   return json({
     photos,
     hours,
+    highlights,
     menu_url: r.url ? `${String(r.url).replace(/\/$/, '')}/menu` : '',
     website: r.website || '',
     phone: r.formatted_phone_number || '',

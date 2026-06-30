@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, Star, ExternalLink, MapPin, Clock, Plus, Loader, ChevronDown } from 'lucide-react';
+import { X, Star, BookOpen, Globe, MapPin, Clock, Plus, Loader, ChevronDown, Sparkles } from 'lucide-react';
 import { getPlaceDetails } from '../lib/api';
 import { haversineMiles, formatDistance } from '../lib/location';
 import type { SearchResult, SearchProvider, OpeningHours } from '../types';
@@ -28,6 +28,7 @@ export function RestaurantDetailDialog({
     result.photos?.length ? result.photos : result.image_url ? [result.image_url] : []
   );
   const [hours, setHours] = useState<OpeningHours | null>(null);
+  const [highlights, setHighlights] = useState('');
   const [menuUrl, setMenuUrl] = useState(result.menu_url);
   const [website, setWebsite] = useState(result.website);
   const [loadingDetails, setLoadingDetails] = useState(true);
@@ -41,6 +42,7 @@ export function RestaurantDetailDialog({
         if (!active) return;
         if (d.photos.length) setPhotos((prev) => (prev.length > d.photos.length ? prev : d.photos));
         if (d.hours) setHours(d.hours);
+        if (d.highlights) setHighlights(d.highlights);
         if (d.menu_url && !menuUrl) setMenuUrl(d.menu_url);
         if (d.website && !website) setWebsite(d.website);
       })
@@ -58,29 +60,21 @@ export function RestaurantDetailDialog({
   }, [userLat, userLng, result.latitude, result.longitude]);
 
   const fullAddress = [result.address, result.city, result.state].filter(Boolean).join(', ');
-
-  // Tier-1 deep links: open each delivery app's search pre-filled with the
-  // restaurant. No store ID / partnership needed — opens the app if installed,
-  // web otherwise. (Can't pre-build a cart; that needs a gated partner API.)
-  const orderQuery = encodeURIComponent([result.name, result.city].filter(Boolean).join(' '));
-  const orderingApps = [
-    { label: 'DoorDash', href: `https://www.doordash.com/search/store/${orderQuery}` },
-    { label: 'Uber Eats', href: `https://www.ubereats.com/search?q=${orderQuery}` },
-    { label: 'Grubhub', href: `https://www.grubhub.com/search?queryText=${orderQuery}` },
-    { label: 'Seamless', href: `https://www.seamless.com/search?queryText=${orderQuery}` },
-    { label: 'Postmates', href: `https://postmates.com/search?q=${orderQuery}` },
-  ];
+  const mapsUrl = result.google_url || `https://www.google.com/maps/search/${encodeURIComponent([result.name, result.city].filter(Boolean).join(' '))}`;
 
   return (
     <div className="dialog-overlay" onClick={onClose}>
       <div
         className="dialog-content"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxHeight: '90vh', overflowY: 'auto' }}
+        style={{
+          maxHeight: '85vh', overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y',
+        }}
       >
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 14 }}>
-          <h2 style={{ fontFamily: "'Righteous', cursive", fontSize: 20, color: 'var(--hot-pink)', flex: 1, lineHeight: 1.2 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 12 }}>
+          <h2 style={{ fontFamily: "'Righteous', cursive", fontSize: 19, color: 'var(--hot-pink)', flex: 1, lineHeight: 1.2 }}>
             {result.name}
           </h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', padding: 0, flexShrink: 0 }}>
@@ -90,14 +84,14 @@ export function RestaurantDetailDialog({
 
         {/* Photo gallery */}
         {photos.length > 0 ? (
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 14, paddingBottom: 4, scrollSnapType: 'x mandatory' }}>
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 12, paddingBottom: 4, scrollSnapType: 'x mandatory' }}>
             {photos.map((src, i) => (
               <img
                 key={i}
                 src={src}
                 alt={`${result.name} ${i + 1}`}
                 style={{
-                  height: 160, minWidth: photos.length === 1 ? '100%' : 220,
+                  height: 150, minWidth: photos.length === 1 ? '100%' : 210,
                   width: photos.length === 1 ? '100%' : 'auto',
                   objectFit: 'cover', borderRadius: 12, border: '2px solid var(--border)',
                   flexShrink: 0, scrollSnapAlign: 'start',
@@ -106,7 +100,7 @@ export function RestaurantDetailDialog({
             ))}
           </div>
         ) : loadingDetails ? (
-          <div style={{ height: 160, marginBottom: 14, borderRadius: 12, background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ height: 150, marginBottom: 12, borderRadius: 12, background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Loader size={20} className="spin" color="var(--text-muted)" />
           </div>
         ) : null}
@@ -133,9 +127,17 @@ export function RestaurantDetailDialog({
           )}
         </div>
 
+        {/* Highlights — Google's AI summary of must-order dishes / vibe */}
+        {highlights && (
+          <div style={{ display: 'flex', gap: 7, marginBottom: 12, padding: '10px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+            <Sparkles size={15} color="var(--hot-pink)" style={{ flexShrink: 0, marginTop: 2 }} />
+            <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{highlights}</p>
+          </div>
+        )}
+
         {/* Cuisine chips */}
         {result.cuisine_tags?.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
             {result.cuisine_tags.map((t) => (
               <span key={t} className="chip" style={{ fontSize: 11, padding: '2px 8px' }}>{t}</span>
             ))}
@@ -144,7 +146,7 @@ export function RestaurantDetailDialog({
 
         {/* Address */}
         {fullAddress && (
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12, display: 'flex', gap: 6 }}>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10, display: 'flex', gap: 6 }}>
             <MapPin size={14} style={{ flexShrink: 0, marginTop: 2 }} />
             {fullAddress}
           </p>
@@ -174,43 +176,21 @@ export function RestaurantDetailDialog({
           </div>
         ) : null}
 
-        {/* External links */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+        {/* Compact links: Menu · Website · Maps on one line */}
+        <div className="links-row" style={{ marginBottom: 16, gap: 8 }}>
           {menuUrl && (
-            <LinkRow href={menuUrl} label="View Menu" />
+            <a href={menuUrl} target="_blank" rel="noreferrer" className="link-chip" style={{ padding: '6px 12px', fontSize: 12 }}>
+              <BookOpen size={13} /> Menu
+            </a>
           )}
           {website && (
-            <LinkRow href={website} label="Website" />
-          )}
-          {result.google_url && (
-            <LinkRow href={result.google_url} label="View on Google Maps" />
-          )}
-          {result.yelp_url && (
-            <LinkRow href={result.yelp_url} label="View on Yelp" />
-          )}
-        </div>
-
-        {/* Order delivery — opens each app's search for this restaurant */}
-        <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, fontFamily: "'Righteous', cursive", marginBottom: 8 }}>
-          Order delivery
-        </p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
-          {orderingApps.map((app) => (
-            <a
-              key={app.label}
-              href={app.href}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 600,
-                color: 'var(--text-primary)', textDecoration: 'none',
-                padding: '8px 12px', background: 'var(--bg-card)',
-                border: '1px solid var(--border)', borderRadius: 20,
-              }}
-            >
-              <ExternalLink size={13} color="var(--hot-pink)" /> {app.label}
+            <a href={website} target="_blank" rel="noreferrer" className="link-chip" style={{ padding: '6px 12px', fontSize: 12 }}>
+              <Globe size={13} /> Website
             </a>
-          ))}
+          )}
+          <a href={mapsUrl} target="_blank" rel="noreferrer" className="link-chip" style={{ padding: '6px 12px', fontSize: 12 }}>
+            <MapPin size={13} /> Maps
+          </a>
         </div>
 
         {/* Add */}
@@ -225,23 +205,5 @@ export function RestaurantDetailDialog({
         )}
       </div>
     </div>
-  );
-}
-
-function LinkRow({ href, label }: { href: string; label: string }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      style={{
-        display: 'flex', alignItems: 'center', gap: 8, fontSize: 14,
-        color: 'var(--electric-blue)', textDecoration: 'none', fontWeight: 500,
-        padding: '10px 12px', background: 'var(--bg-card)',
-        border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-      }}
-    >
-      <ExternalLink size={15} /> {label}
-    </a>
   );
 }

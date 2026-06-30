@@ -123,6 +123,9 @@ export function SearchPage() {
             placeholder="Restaurants, dishes, cities, notes..."
             value={query}
             onChange={e => setQuery(e.target.value)}
+            enterKeyHint="search"
+            inputMode="search"
+            onKeyDown={e => { if (e.key === 'Enter') inputRef.current?.blur(); }}
           />
           {query && (
             <button
@@ -134,30 +137,68 @@ export function SearchPage() {
           )}
         </div>
 
-        {/* Scope toggle: search everything vs. only discover nearby */}
-        <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
-          {([
-            { key: 'all', label: 'My list + Nearby' },
-            { key: 'nearby', label: 'Nearby only' },
-          ] as { key: SearchMode; label: string }[]).map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setMode(key)}
-              style={{
-                flex: 1, fontSize: 12, fontWeight: 600, padding: '7px 0',
-                borderRadius: 20, cursor: 'pointer',
-                border: `1px solid ${mode === key ? 'var(--hot-pink)' : 'var(--border)'}`,
-                background: mode === key ? 'var(--hot-pink)' : 'var(--bg-card)',
-                color: mode === key ? 'white' : 'var(--text-muted)',
-              }}
-            >
-              {label}
-            </button>
-          ))}
+        {/* Scope toggle (sliding notch) + location, on one row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+          <div style={{
+            position: 'relative', display: 'inline-flex', flexShrink: 0,
+            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+            borderRadius: 20, padding: 3,
+          }}>
+            {/* sliding indicator */}
+            <div aria-hidden style={{
+              position: 'absolute', top: 3, bottom: 3, width: 'calc(50% - 3px)',
+              left: mode === 'all' ? 3 : '50%',
+              background: 'var(--hot-pink)', borderRadius: 16,
+              transition: 'left 0.2s ease',
+            }} />
+            {([
+              { key: 'all', label: 'Yours' },
+              { key: 'nearby', label: 'Nearby' },
+            ] as { key: SearchMode; label: string }[]).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setMode(key)}
+                style={{
+                  position: 'relative', zIndex: 1, background: 'none', border: 'none',
+                  padding: '5px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  color: mode === key ? 'white' : 'var(--text-muted)',
+                  transition: 'color 0.2s ease',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {!editingLocation && effectiveLocation && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                onClick={() => setEditingLocation(true)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                  borderRadius: 20, padding: '5px 12px', cursor: 'pointer',
+                  color: 'var(--electric-blue)', fontSize: 12, fontWeight: 500,
+                }}
+              >
+                <MapPin size={11} />
+                {effectiveLocation}
+              </button>
+              {customLocation && (
+                <button
+                  onClick={() => setCustomLocation('')}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', lineHeight: 1, padding: 0 }}
+                  title="Reset to my location"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Location pill */}
-        {editingLocation ? (
+        {/* Location editor (full-width row) */}
+        {editingLocation && (
           <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
             <input
               className="input"
@@ -176,31 +217,7 @@ export function SearchPage() {
               Done
             </button>
           </div>
-        ) : effectiveLocation ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
-            <button
-              onClick={() => setEditingLocation(true)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                borderRadius: 20, padding: '4px 10px', cursor: 'pointer',
-                color: 'var(--electric-blue)', fontSize: 12, fontWeight: 500,
-              }}
-            >
-              <MapPin size={11} />
-              {effectiveLocation}
-            </button>
-            {customLocation && (
-              <button
-                onClick={() => setCustomLocation('')}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', lineHeight: 1, padding: 0 }}
-                title="Reset to my location"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-        ) : null}
+        )}
       </div>
 
       <div style={{ paddingBottom: 100 }}>

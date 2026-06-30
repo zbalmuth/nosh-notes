@@ -20,9 +20,11 @@ import {
   RefreshCw,
   X,
   Tag,
+  ShoppingBag,
 } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { searchRestaurants } from '../lib/api';
+import { getOrderingLinks } from '../lib/ordering';
 import { DishCard } from '../components/DishCard';
 import { ScrollBar } from '../components/ScrollBar';
 import type { Restaurant, Dish } from '../types';
@@ -59,6 +61,7 @@ export function RestaurantPage() {
   const [sortReversed, setSortReversed] = useState(false);
   const [wantToTryOnly, setWantToTryOnly] = useState(false);
   const [infoExpanded, setInfoExpanded] = useState(false);
+  const [showOrder, setShowOrder] = useState(false);
 
   // Edit mode
   const [editing, setEditing] = useState(false);
@@ -460,8 +463,9 @@ export function RestaurantPage() {
           <h2 style={{ fontFamily: "'Righteous', cursive", fontSize: 20, color: 'var(--hot-pink)' }}>
             Dishes ({dishTypeFilters.size > 0 || wantToTryOnly ? `${filteredDishes.length}/${dishes.length}` : dishes.length})
           </h2>
-          {dishes.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {dishes.length > 0 && (
+            <>
               <button
                 onClick={handleSortToggle}
                 style={{
@@ -499,8 +503,58 @@ export function RestaurantPage() {
               >
                 <CheckSquare size={18} />
               </button>
+            </>
+            )}
+
+            {/* Order delivery popout — opens each app's search for this restaurant */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowOrder(v => !v)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  background: showOrder ? 'var(--hot-pink)' : 'none',
+                  border: `1px solid ${showOrder ? 'var(--hot-pink)' : 'var(--border)'}`,
+                  color: showOrder ? 'white' : 'var(--hot-pink)',
+                  borderRadius: 20, padding: '4px 10px', cursor: 'pointer',
+                  fontSize: 11, fontWeight: 700, fontFamily: "'Righteous', cursive",
+                }}
+              >
+                <ShoppingBag size={14} /> Order
+              </button>
+              {showOrder && (
+                <>
+                  <div onClick={() => setShowOrder(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                  <div style={{
+                    position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 41,
+                    background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)', padding: 6, minWidth: 150,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                  }}>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '4px 8px 6px' }}>
+                      Order delivery
+                    </p>
+                    {getOrderingLinks(restaurant.name, restaurant.city).map(app => (
+                      <a
+                        key={app.label}
+                        href={app.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => setShowOrder(false)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '8px', borderRadius: 8,
+                          fontSize: 13, fontWeight: 600, color: 'var(--text-primary)',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        <ExternalLink size={13} color="var(--hot-pink)" /> {app.label}
+                      </a>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
         {/* Dish type filter */}

@@ -90,6 +90,7 @@ export interface PlaceDetails {
   menu_url: string;
   website: string;
   phone: string;
+  highlights: string; // Google AI summary (must-order dishes / vibe); '' if unavailable
 }
 
 export const DISH_TYPES: { value: DishType; label: string }[] = [

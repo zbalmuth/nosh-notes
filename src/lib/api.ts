@@ -178,6 +178,7 @@ export async function getPlaceDetails(
     menu_url: data?.menu_url || '',
     website: data?.website || '',
     phone: data?.phone || '',
+    highlights: data?.highlights || '',
   };
 }
 
