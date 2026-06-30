@@ -77,6 +77,21 @@ export interface SearchResult {
   longitude: number | null;
 }
 
+export interface OpeningHours {
+  open_now?: boolean;
+  weekday_text?: string[];
+}
+
+// Extra detail fetched lazily (when a result's dialog is opened) so the list
+// search stays fast. Provided by the `place-details` edge function.
+export interface PlaceDetails {
+  photos: string[];
+  hours: OpeningHours | null;
+  menu_url: string;
+  website: string;
+  phone: string;
+}
+
 export const DISH_TYPES: { value: DishType; label: string }[] = [
   { value: 'appetizer', label: 'Appetizer' },
   { value: 'salad', label: 'Salad' },

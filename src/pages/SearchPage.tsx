@@ -6,12 +6,17 @@ import { searchRestaurants, searchDishes } from '../lib/api';
 import type { SearchResult, SearchProvider, Dish } from '../types';
 import { getRatingColor } from '../types';
 import { detectLocation } from '../lib/location';
+import { RestaurantDetailDialog } from '../components/RestaurantDetailDialog';
+
+type SearchMode = 'all' | 'nearby';
 
 export function SearchPage() {
   const navigate = useNavigate();
   const { restaurants } = useApp();
 
   const [query, setQuery] = useState('');
+  const [mode, setMode] = useState<SearchMode>('all');
+  const [detailResult, setDetailResult] = useState<SearchResult | null>(null);
   const [locationLabel, setLocationLabel] = useState('');
   const [editingLocation, setEditingLocation] = useState(false);
   const [customLocation, setCustomLocation] = useState('');
@@ -129,6 +134,28 @@ export function SearchPage() {
           )}
         </div>
 
+        {/* Scope toggle: search everything vs. only discover nearby */}
+        <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+          {([
+            { key: 'all', label: 'My list + Nearby' },
+            { key: 'nearby', label: 'Nearby only' },
+          ] as { key: SearchMode; label: string }[]).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setMode(key)}
+              style={{
+                flex: 1, fontSize: 12, fontWeight: 600, padding: '7px 0',
+                borderRadius: 20, cursor: 'pointer',
+                border: `1px solid ${mode === key ? 'var(--hot-pink)' : 'var(--border)'}`,
+                background: mode === key ? 'var(--hot-pink)' : 'var(--bg-card)',
+                color: mode === key ? 'white' : 'var(--text-muted)',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Location pill */}
         {editingLocation ? (
           <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
@@ -187,6 +214,8 @@ export function SearchPage() {
           </div>
         ) : (
           <>
+            {mode === 'all' && (
+            <>
             {/* ── Your Restaurants ── */}
             <SectionHeader label="Your Restaurants" count={collectionResults.length} />
             <div style={{ padding: '0 20px' }}>
@@ -282,6 +311,8 @@ export function SearchPage() {
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>No dishes or notes match</p>
               )}
             </div>
+            </>
+            )}
 
             {/* ── Discover Nearby ── */}
             <div style={{ padding: '16px 20px 0' }}>
@@ -320,10 +351,12 @@ export function SearchPage() {
                        r.city?.toLowerCase() === result.city?.toLowerCase()
                 );
                 return (
-                  <div key={result.id} style={{
+                  <div key={result.id}
+                    onClick={() => setDetailResult(result)}
+                    style={{
                     background: 'var(--bg-card)', border: '1px solid var(--border)',
                     borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: 8,
-                    display: 'flex', gap: 12, alignItems: 'center',
+                    display: 'flex', gap: 12, alignItems: 'center', cursor: 'pointer',
                   }}>
                     {result.image_url && (
                       <img src={result.image_url} alt={result.name}
@@ -343,7 +376,7 @@ export function SearchPage() {
                       </span>
                     ) : (
                       <button
-                        onClick={() => navigate('/add-restaurant', { state: { prefill: result } })}
+                        onClick={(e) => { e.stopPropagation(); navigate('/add-restaurant', { state: { prefill: result } }); }}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0,
                           background: 'linear-gradient(135deg, var(--hot-pink), var(--purple))',
@@ -366,6 +399,21 @@ export function SearchPage() {
           </>
         )}
       </div>
+
+      {detailResult && (
+        <RestaurantDetailDialog
+          result={detailResult}
+          provider={provider}
+          userLat={latitude}
+          userLng={longitude}
+          alreadySaved={restaurants.some(
+            r => r.name.toLowerCase() === detailResult.name.toLowerCase() &&
+                 r.city?.toLowerCase() === detailResult.city?.toLowerCase()
+          )}
+          onClose={() => setDetailResult(null)}
+          onAdd={(result) => navigate('/add-restaurant', { state: { prefill: result } })}
+        />
+      )}
     </div>
   );
 }

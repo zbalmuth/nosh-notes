@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { Restaurant, Dish, RestaurantList, SearchResult, SearchProvider } from '../types';
+import type { Restaurant, Dish, RestaurantList, SearchResult, SearchProvider, PlaceDetails } from '../types';
 
 // ─── Auth ───────────────────────────────────────────────────────────────────
 export async function signUp(email: string, password: string) {
@@ -161,6 +161,24 @@ export async function searchRestaurants(
   });
   if (error) throw new Error(`Search request failed: ${error.message}`);
   return data?.results || [];
+}
+
+// ─── Place details: photos + hours, fetched lazily for one result ───────────
+export async function getPlaceDetails(
+  id: string,
+  provider: SearchProvider
+): Promise<PlaceDetails> {
+  const { data, error } = await supabase.functions.invoke('place-details', {
+    body: { id, provider },
+  });
+  if (error) throw new Error(`Place details request failed: ${error.message}`);
+  return {
+    photos: data?.photos || [],
+    hours: data?.hours || null,
+    menu_url: data?.menu_url || '',
+    website: data?.website || '',
+    phone: data?.phone || '',
+  };
 }
 
 // ─── AI Dish Recognition (via Edge Function proxy) ──────────────────────────
