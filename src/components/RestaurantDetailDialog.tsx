@@ -63,13 +63,24 @@ export function RestaurantDetailDialog({
   const mapsUrl = result.google_url || `https://www.google.com/maps/search/${encodeURIComponent([result.name, result.city].filter(Boolean).join(' '))}`;
 
   return (
-    <div className="dialog-overlay" onClick={onClose}>
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 200,
+        background: 'rgba(15, 15, 35, 0.85)',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
+        padding: 'max(env(safe-area-inset-top), 16px) 12px max(env(safe-area-inset-bottom), 16px)',
+      }}
+    >
       <div
-        className="dialog-content"
         onClick={(e) => e.stopPropagation()}
         style={{
-          maxHeight: '85vh', overflowY: 'auto',
-          WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y',
+          background: 'var(--bg-secondary)',
+          border: '2px solid var(--hot-pink)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: '0 10px 40px rgba(255, 20, 147, 0.25)',
+          width: '100%', maxWidth: 460, margin: 'auto', padding: 20,
         }}
       >
         {/* Header */}
