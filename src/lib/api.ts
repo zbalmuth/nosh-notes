@@ -135,17 +135,23 @@ export async function deleteDish(id: string) {
 
 // ─── Dish search (across all user's dishes) ─────────────────────────────────
 export async function searchDishes(query: string): Promise<Dish[]> {
-  // Strip characters that PostgREST parses as filter-string delimiters to prevent injection
-  const safe = query.replace(/[(),"]/g, '');
-  const q = `%${safe}%`;
-  const { data, error } = await supabase
-    .from('dishes')
-    .select('*')
-    .or(`name.ilike.${q},notes.ilike.${q}`)
-    .order('created_at', { ascending: false })
-    .limit(30);
-  if (error) throw error;
-  return data || [];
+  const q = `%${query}%`;
+  // Use typed .ilike() instead of raw .or() string interpolation to avoid PostgREST filter injection.
+  const [byName, byNotes] = await Promise.all([
+    supabase.from('dishes').select('*').ilike('name', q).order('created_at', { ascending: false }).limit(30),
+    supabase.from('dishes').select('*').ilike('notes', q).order('created_at', { ascending: false }).limit(30),
+  ]);
+  if (byName.error) throw byName.error;
+  if (byNotes.error) throw byNotes.error;
+  const seen = new Set<string>();
+  const merged: Dish[] = [];
+  for (const dish of [...(byName.data ?? []), ...(byNotes.data ?? [])]) {
+    if (!seen.has(dish.id)) {
+      seen.add(dish.id);
+      merged.push(dish);
+    }
+  }
+  return merged.slice(0, 30);
 }
 
 // ─── Search (via Edge Function proxy) ───────────────────────────────────────

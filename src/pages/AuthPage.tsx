@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { signIn, signUp } from '../lib/api';
-import { supabase } from '../lib/supabase';
 
 export function AuthPage() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -31,9 +30,15 @@ export function AuthPage() {
         if (authError) {
           setError(authError.message);
         } else if (!rememberMe) {
-          window.addEventListener('beforeunload', () => {
-            supabase.auth.signOut();
-          }, { once: true });
+          // Move session from localStorage to sessionStorage so it is cleared when the tab closes.
+          // The hybridStorage adapter in supabase.ts will then find it in sessionStorage and keep
+          // it there for the lifetime of the tab without persisting it across browser restarts.
+          const key = 'nosh-notes-auth';
+          const stored = window.localStorage.getItem(key);
+          if (stored) {
+            window.sessionStorage.setItem(key, stored);
+            window.localStorage.removeItem(key);
+          }
         }
       }
     } catch {

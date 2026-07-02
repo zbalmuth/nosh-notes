@@ -146,6 +146,7 @@ serve(async (req) => {
     }
 
     let messages: unknown[];
+    let openaiFileId: string | null = null;
 
     if (contentType.includes('image/') && responseData) {
       // --- IMAGE MENU: Send directly to GPT-4o vision ---
@@ -179,6 +180,7 @@ serve(async (req) => {
       const uploadData = await uploadRes.json();
 
       if (uploadData.id) {
+        openaiFileId = uploadData.id;
         // Use the file reference in the chat completion
         messages = [
           { role: 'system', content: SYSTEM_PROMPT },
@@ -277,6 +279,15 @@ The page content could not be fetched. Based on your knowledge of this restauran
     });
 
     const data = await response.json();
+
+    // Delete the uploaded PDF from OpenAI's file storage — best-effort, don't fail on cleanup errors.
+    if (openaiFileId) {
+      fetch(`https://api.openai.com/v1/files/${openaiFileId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${apiKey}` },
+      }).catch(() => {});
+    }
+
     if (!response.ok) {
       throw new Error(`OpenAI API error: ${data.error?.message || response.statusText}`);
     }
