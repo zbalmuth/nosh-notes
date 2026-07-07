@@ -15,6 +15,8 @@ import { SearchPage } from './pages/SearchPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { BottomNav } from './components/BottomNav';
 import { AppProvider } from './hooks/useAppContext';
+import { AppLockProvider } from './lib/appLock';
+import { useAppLock } from './hooks/useAppLock';
 import { applyTheme, getTheme, loadThemeFromServer } from './pages/SettingsPage';
 
 // Apply locally saved theme immediately (no flash)
@@ -50,9 +52,10 @@ function InitialRedirect() {
   return null;
 }
 
-function App() {
+function AppInner() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const { needsUnlock } = useAppLock();
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -84,8 +87,8 @@ function App() {
     );
   }
 
-  if (!session) {
-    return <AuthPage />;
+  if (!session || needsUnlock) {
+    return <AuthPage session={session} />;
   }
 
   return (
@@ -111,6 +114,14 @@ function App() {
         </div>
       </BrowserRouter>
     </AppProvider>
+  );
+}
+
+function App() {
+  return (
+    <AppLockProvider>
+      <AppInner />
+    </AppLockProvider>
   );
 }
 

@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Palette, MapPin, X, LogOut } from 'lucide-react';
+import { ArrowLeft, Palette, MapPin, X, LogOut, ScanFace, Fingerprint } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { supabase } from '../lib/supabase';
+import { useAppLock } from '../hooks/useAppLock';
+import { BiometryType } from '@aparajita/capacitor-biometric-auth';
 
 const THEME_KEY = 'nosh-notes-theme';
 
@@ -60,6 +62,7 @@ export async function loadThemeFromServer() {
 export function SettingsPage() {
   const navigate = useNavigate();
   const { restaurants, cities, updateRestaurant, showToast, refreshRestaurants } = useApp();
+  const { isNative, isAvailable, biometryType, enabled: faceIdEnabled, setEnabled: setFaceIdEnabled } = useAppLock();
 
   const [currentTheme, setCurrentTheme] = useState<ThemeName>(getTheme());
   const [mergeFrom, setMergeFrom] = useState<string[]>([]);
@@ -200,6 +203,41 @@ export function SettingsPage() {
             </button>
           </div>
         </div>
+
+        {/* Security */}
+        {isNative && isAvailable && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              {biometryType === BiometryType.faceId
+                ? <ScanFace size={18} style={{ color: 'var(--hot-pink)' }} />
+                : <Fingerprint size={18} style={{ color: 'var(--hot-pink)' }} />}
+              <h3 style={{ fontFamily: "'Righteous', cursive", fontSize: 16, color: 'var(--hot-pink)' }}>
+                Security
+              </h3>
+            </div>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              cursor: 'pointer',
+              padding: '12px',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--border)',
+              background: 'var(--bg-card)',
+            }}>
+              <span style={{ fontSize: 14 }}>
+                {biometryType === BiometryType.faceId ? 'Require Face ID' : 'Require Biometric Unlock'}
+              </span>
+              <input
+                type="checkbox"
+                checked={faceIdEnabled}
+                onChange={(e) => setFaceIdEnabled(e.target.checked)}
+                style={{ width: 20, height: 20, accentColor: 'var(--hot-pink)' }}
+              />
+            </label>
+          </div>
+        )}
 
         {/* City Management */}
         <div style={{ marginBottom: 24 }}>

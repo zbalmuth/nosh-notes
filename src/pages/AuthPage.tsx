@@ -1,7 +1,38 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { signIn, signUp } from '../lib/api';
+import { supabase } from '../lib/supabase';
+import { useAppLock } from '../hooks/useAppLock';
+import { BiometryType } from '@aparajita/capacitor-biometric-auth';
 
-export function AuthPage() {
+interface AuthPageProps {
+  session?: Session | null;
+}
+
+export function AuthPage({ session }: AuthPageProps) {
+  const { needsUnlock, biometryType, unlock, markUnlocked } = useAppLock();
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlockFailed, setUnlockFailed] = useState(false);
+
+  // A restored session still needs Face ID confirmation before it's usable —
+  // everything else (signed out, or already unlocked) falls through to the
+  // normal sign-in form below.
+  const showLockPanel = !!session && needsUnlock;
+
+  const attemptUnlock = async () => {
+    setUnlocking(true);
+    setUnlockFailed(false);
+    const ok = await unlock();
+    setUnlocking(false);
+    if (ok) markUnlocked();
+    else setUnlockFailed(true);
+  };
+
+  useEffect(() => {
+    if (showLockPanel) attemptUnlock();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showLockPanel]);
+
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -47,6 +78,44 @@ export function AuthPage() {
       setLoading(false);
     }
   };
+
+  if (showLockPanel) {
+    return (
+      <div className="app-container">
+        <div className="auth-page">
+          <div style={{ marginBottom: 8 }}>
+            <span style={{ fontSize: 60 }}>🍽️</span>
+          </div>
+          <h1>Nosh Notes</h1>
+          {unlockFailed && (
+            <p style={{ color: 'var(--coral)', fontSize: 13, marginTop: 8 }}>
+              Authentication failed. Try again.
+            </p>
+          )}
+          <button
+            className="btn btn-primary"
+            type="button"
+            disabled={unlocking}
+            onClick={attemptUnlock}
+            style={{ width: '100%', marginTop: 24 }}
+          >
+            {unlocking
+              ? 'Unlocking...'
+              : biometryType === BiometryType.faceId
+                ? 'Continue with Face ID'
+                : 'Continue'}
+          </button>
+          <button
+            type="button"
+            className="toggle-link"
+            onClick={() => supabase.auth.signOut()}
+          >
+            Sign in with a different account
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
