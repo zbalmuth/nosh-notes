@@ -33,11 +33,15 @@ CREATE TABLE IF NOT EXISTS restaurants (
   cuisine_tags TEXT[] DEFAULT '{}',
   lists TEXT[] DEFAULT '{"My Restaurants"}',
   is_favorite BOOLEAN DEFAULT FALSE,
+  notes TEXT DEFAULT '',
   latitude FLOAT,
   longitude FLOAT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migration for existing databases (safe to re-run):
+-- ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';
 
 -- Dishes table
 CREATE TABLE IF NOT EXISTS dishes (

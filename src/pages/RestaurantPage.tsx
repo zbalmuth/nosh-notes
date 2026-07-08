@@ -21,6 +21,7 @@ import {
   X,
   Tag,
   ShoppingBag,
+  StickyNote,
 } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { searchRestaurants } from '../lib/api';
@@ -63,6 +64,11 @@ export function RestaurantPage() {
   const [infoExpanded, setInfoExpanded] = useState(false);
   const [showOrder, setShowOrder] = useState(false);
 
+  // Restaurant-level notes (inline editing in the info card)
+  const [noteEditing, setNoteEditing] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
+
   // Edit mode
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
@@ -74,6 +80,7 @@ export function RestaurantPage() {
   const [editMenuUrl, setEditMenuUrl] = useState('');
   const [editImageUrl, setEditImageUrl] = useState('');
   const [editPriceLevel, setEditPriceLevel] = useState('');
+  const [editNotes, setEditNotes] = useState('');
   const [editCuisines, setEditCuisines] = useState<string[]>([]);
   const [editLists, setEditLists] = useState<string[]>([]);
   const [editNewCuisine, setEditNewCuisine] = useState('');
@@ -210,6 +217,7 @@ export function RestaurantPage() {
     setEditMenuUrl(restaurant.menu_url || '');
     setEditImageUrl(restaurant.image_url || '');
     setEditPriceLevel(restaurant.price_level || '');
+    setEditNotes(restaurant.notes || '');
     setEditCuisines(restaurant.cuisine_tags || []);
     setEditLists(restaurant.lists || []);
     setShowCuisinePicker(false);
@@ -230,6 +238,9 @@ export function RestaurantPage() {
         menu_url: editMenuUrl,
         image_url: editImageUrl,
         price_level: editPriceLevel,
+        // Only send notes when changed so edits keep working on databases
+        // that haven't run the ALTER TABLE for the notes column yet.
+        ...(editNotes.trim() !== (restaurant.notes || '') ? { notes: editNotes.trim() } : {}),
         cuisine_tags: editCuisines,
         lists: editLists,
       });
@@ -268,6 +279,22 @@ export function RestaurantPage() {
       showToast('Refresh failed');
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const handleSaveNote = async () => {
+    if (!restaurant) return;
+    setNoteSaving(true);
+    try {
+      await updateRestaurant(restaurant.id, { notes: noteDraft.trim() });
+      setNoteEditing(false);
+      showToast('Note saved!');
+    } catch (err) {
+      // Supabase throws plain {message} objects, not Error instances
+      const msg = (err as { message?: string })?.message;
+      showToast(msg || 'Failed to save note');
+    } finally {
+      setNoteSaving(false);
     }
   };
 
@@ -340,7 +367,7 @@ export function RestaurantPage() {
       {/* Content */}
       <div style={{ padding: '16px 20px' }}>
         {/* Contact & Info — collapsible card */}
-        {(restaurant.address || restaurant.city || restaurant.phone || restaurant.price_level || restaurant.external_rating || hasLinks || restaurant.cuisine_tags?.length > 0) && (
+        {(restaurant.address || restaurant.city || restaurant.phone || restaurant.price_level || restaurant.external_rating || hasLinks || restaurant.cuisine_tags?.length > 0 || restaurant.notes || noteEditing) && (
           <div style={{
             marginBottom: 12,
             background: 'var(--bg-card)',
@@ -369,6 +396,67 @@ export function RestaurantPage() {
                 ? <ChevronUp size={15} color="var(--text-muted)" />
                 : <ChevronDown size={15} color="var(--text-muted)" />}
             </button>
+
+            {/* Restaurant notes — always visible in the info card */}
+            <div style={{ padding: '0 14px 10px' }}>
+              {noteEditing ? (
+                <div>
+                  <textarea
+                    className="input"
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    placeholder="Notes about this restaurant... (parking, reservations, favorite table, etc.)"
+                    rows={3}
+                    autoFocus
+                    style={{ width: '100%', resize: 'vertical', fontSize: 13, lineHeight: 1.5 }}
+                  />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 6, justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={() => setNoteEditing(false)}
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer', padding: '4px 8px' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleSaveNote}
+                      disabled={noteSaving}
+                      style={{ fontSize: 12, padding: '4px 14px' }}
+                    >
+                      {noteSaving ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              ) : restaurant.notes ? (
+                <button
+                  onClick={() => { setNoteDraft(restaurant.notes || ''); setNoteEditing(true); }}
+                  style={{
+                    width: '100%', textAlign: 'left', background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border)', borderRadius: 8,
+                    padding: '8px 10px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'flex-start', gap: 8,
+                  }}
+                  title="Edit note"
+                >
+                  <StickyNote size={14} color="var(--palm-green)" style={{ flexShrink: 0, marginTop: 2 }} />
+                  <span style={{ flex: 1, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                    {restaurant.notes}
+                  </span>
+                  <Pencil size={12} color="var(--text-muted)" style={{ flexShrink: 0, marginTop: 3 }} />
+                </button>
+              ) : (
+                <button
+                  onClick={() => { setNoteDraft(''); setNoteEditing(true); }}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    background: 'none', border: 'none', padding: 0,
+                    fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer',
+                  }}
+                >
+                  <StickyNote size={13} /> Add note
+                </button>
+              )}
+            </div>
 
             {/* Expanded details */}
             {infoExpanded && (
@@ -768,6 +856,18 @@ export function RestaurantPage() {
                   <button key={p} className={`chip ${editPriceLevel === p ? 'active' : ''}`} onClick={() => setEditPriceLevel(editPriceLevel === p ? '' : p)}>{p}</button>
                 ))}
               </div>
+            </div>
+
+            <div className="form-group">
+              <label>Notes</label>
+              <textarea
+                className="input"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Notes about this restaurant... (parking, reservations, favorite table, etc.)"
+                rows={3}
+                style={{ width: '100%', resize: 'vertical' }}
+              />
             </div>
 
             {/* Lists */}

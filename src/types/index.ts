@@ -18,6 +18,7 @@ export interface Restaurant {
   cuisine_tags: string[];
   lists: string[];
   is_favorite: boolean;
+  notes: string;
   latitude: number | null;
   longitude: number | null;
   created_at: string;
