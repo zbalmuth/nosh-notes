@@ -41,6 +41,13 @@ serve(async (req) => {
 
   try {
     const { image } = await req.json();
+    // Reject oversized payloads: 10 MB of base64 ≈ 7.5 MB raw — far larger than any reasonable photo.
+    if (!image || typeof image !== 'string' || image.length > 10_000_000) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid or oversized image payload', dishes: [] }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     const apiKey = Deno.env.get('OPENAI_API_KEY');
     if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
 

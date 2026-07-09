@@ -24,6 +24,18 @@ Extract every item you can find. Include drinks, appetizers, desserts, sides, et
 
 const MAX_FETCH_BYTES = 10 * 1024 * 1024; // 10 MB cap on fetched content
 
+// Returns true if the dotted-decimal IPv4 string falls in a private/reserved range.
+function isPrivateDottedIp(ip: string): boolean {
+  return (
+    ip === '0.0.0.0' ||
+    /^127\./.test(ip) ||
+    /^10\./.test(ip) ||
+    /^192\.168\./.test(ip) ||
+    /^172\.(1[6-9]|2[0-9]|3[01])\./.test(ip) ||
+    /^169\.254\./.test(ip)
+  );
+}
+
 function isAllowedUrl(urlStr: string): boolean {
   let parsed: URL;
   try {
@@ -51,6 +63,30 @@ function isAllowedUrl(urlStr: string): boolean {
     /^fd/i.test(h) ||        // unique local fc00::/7
     /^fe[89ab]/i.test(h)     // link-local fe80::/10
   ) return false;
+
+  // Block alternative IPv4 representations that bypass dotted-decimal regex checks.
+  // Decimal (2852039166 → 169.254.169.254), hex (0xa9fea9fe), and octal (025177524776)
+  // can all resolve to private IPs on systems that support non-dotted address formats.
+  if (/^\d+$/.test(h) || /^0x[\da-f]+$/i.test(h) || /^0\d+$/.test(h)) {
+    let decimal: number;
+    if (/^0x[\da-f]+$/i.test(h)) {
+      decimal = parseInt(h, 16);
+    } else if (/^0\d+$/.test(h)) {
+      decimal = parseInt(h, 8);
+    } else {
+      decimal = parseInt(h, 10);
+    }
+    if (!isNaN(decimal) && decimal >= 0 && decimal <= 0xFFFFFFFF) {
+      const dotted = [
+        (decimal >>> 24) & 0xFF,
+        (decimal >>> 16) & 0xFF,
+        (decimal >>> 8) & 0xFF,
+        decimal & 0xFF,
+      ].join('.');
+      if (isPrivateDottedIp(dotted)) return false;
+    }
+  }
+
   return true;
 }
 

@@ -1,5 +1,53 @@
 # Security Scan Log
 
+## 2026-07-09 — Automated Weekly Scan
+
+**Result: 2 vulnerabilities fixed.**
+
+Scanned: `src/`, `supabase/functions/`, `supabase-schema.sql`, config files.
+Threat-intel KB: empty (no new entries since last scan).
+
+### Vulnerabilities fixed
+
+**1. SSRF bypass via alternative IPv4 representations — `supabase/functions/analyze-menu-url/index.ts` (Medium)**
+`isAllowedUrl()` blocked private IP ranges using dotted-decimal regex but did not handle
+alternative IPv4 encodings that some HTTP clients resolve correctly:
+- Decimal: `2852039166` → `169.254.169.254` (cloud IMDS)
+- Hex: `0xa9fea9fe` → same
+- Octal: `025177524776` → `127.0.0.1`
+
+An authenticated user could reach the instance metadata service (169.254.169.254) to exfiltrate
+cloud credentials.
+
+Fixed by adding a `isPrivateDottedIp()` helper and extending `isAllowedUrl()` to detect
+hostnames that are pure decimal integers, hex literals (`0x…`), or leading-zero octal strings,
+convert them to dotted form, and block them if they fall in a private range.
+
+**2. Missing image size validation — `supabase/functions/analyze-dish/index.ts` (Low)**
+The `image` field from the request body was forwarded to the OpenAI Vision API without any
+size check. An authenticated user could send a ≥10 MB base64 string, incurring excess OpenAI
+API cost or causing timeouts.
+
+Fixed by rejecting `image` payloads over 10 MB (base64 length) with a 400 response before
+the OpenAI call.
+
+### Checks performed
+- Unvalidated user input / injection vectors: **Clean.** Parameterized PostgREST queries throughout.
+- Auth/authz on API routes: **All edge functions require JWT.** RLS enforced on all tables.
+- Hardcoded secrets: **None.** Environment variables used throughout; `.env` gitignored.
+- XSS vectors (`dangerouslySetInnerHTML`, `eval`, `innerHTML`): **None found.**
+- CSRF: **N/A.** JWT Bearer tokens are not auto-sent cross-origin.
+- SSRF: **Fixed** (see #1 above). Post-redirect validation still in place.
+- IDOR: **Not possible.** RLS `auth.uid() = user_id` enforced on all tables.
+- Overly permissive storage/cloud configs: **Not found in source.**
+
+### Informational (no fix required)
+- `anon` role still granted SELECT on all tables. RLS returns 0 rows for unauthenticated users. Removing these grants requires a DB migration out of scope for this scan.
+- 18 `npm audit` findings in dev/build dependencies (Vite, esbuild, Babel). Not shipped in production. Peer-dep constraints block auto-fix.
+- Edge function CORS is `Access-Control-Allow-Origin: *` — standard for JWT-authenticated Supabase functions.
+
+---
+
 ## 2026-07-02 — Automated Weekly Scan
 
 **Result: 3 vulnerabilities fixed.**
