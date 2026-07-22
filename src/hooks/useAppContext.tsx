@@ -1,8 +1,15 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import * as api from '../lib/api';
 import type { Restaurant, RestaurantList, Dish } from '../types';
 import { Loader, Check } from 'lucide-react';
 import { sendNotification } from '../lib/notifications';
+import { getCached, getCachedAge, setCached } from '../lib/cache';
+
+const DISH_PREFETCH_FRESH_MS = 10 * 60 * 1000; // skip refetching dishes cached within 10 min
+
+function citiesFrom(restaurants: Restaurant[]): string[] {
+  return Array.from(new Set(restaurants.map((r) => r.city).filter(Boolean))).sort();
+}
 
 interface ImportProgress {
   total: number;
@@ -40,11 +47,15 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-  const [lists, setLists] = useState<RestaurantList[]>([]);
-  const [cuisineTags, setCuisineTags] = useState<string[]>([]);
-  const [cities, setCities] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Instant paint: seed state from localStorage synchronously so the home
+  // list renders immediately on cold start, then refresh from Supabase below.
+  const [restaurants, setRestaurants] = useState<Restaurant[]>(
+    () => getCached<Restaurant[]>('restaurants') ?? []
+  );
+  const [lists, setLists] = useState<RestaurantList[]>(() => getCached<RestaurantList[]>('lists') ?? []);
+  const [cuisineTags, setCuisineTags] = useState<string[]>(() => getCached<string[]>('cuisineTags') ?? []);
+  const [cities, setCities] = useState<string[]>(() => citiesFrom(getCached<Restaurant[]>('restaurants') ?? []));
+  const [loading, setLoading] = useState(() => getCached<Restaurant[]>('restaurants') === null);
   const [toast, setToast] = useState<string | null>(null);
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
 
@@ -56,24 +67,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const refreshRestaurants = useCallback(async () => {
     const data = await api.getRestaurants();
     setRestaurants(data);
-    const citySet = new Set(data.map(r => r.city).filter(Boolean));
-    setCities(Array.from(citySet).sort());
+    setCached('restaurants', data);
+    setCities(citiesFrom(data));
   }, []);
 
   const refreshLists = useCallback(async () => {
     const data = await api.getLists();
     setLists(data);
+    setCached('lists', data);
   }, []);
 
   const refreshCuisineTags = useCallback(async () => {
     const data = await api.getAllCuisineTags();
     setCuisineTags(data);
+    setCached('cuisineTags', data);
   }, []);
 
   useEffect(() => {
     Promise.all([refreshRestaurants(), refreshLists(), refreshCuisineTags()])
       .finally(() => setLoading(false));
   }, [refreshRestaurants, refreshLists, refreshCuisineTags]);
+
+  // Background prefetch: once the restaurant list is known (from cache or
+  // network), warm each restaurant's dish list in localStorage one at a time
+  // so opening any restaurant page paints instantly instead of spinning.
+  const prefetchStarted = useRef(false);
+  useEffect(() => {
+    if (prefetchStarted.current || restaurants.length === 0) return;
+    prefetchStarted.current = true;
+    (async () => {
+      for (const r of restaurants) {
+        const age = getCachedAge(`dishes:${r.id}`);
+        if (age !== null && age < DISH_PREFETCH_FRESH_MS) continue;
+        try {
+          const dishes = await api.getDishes(r.id);
+          setCached(`dishes:${r.id}`, dishes);
+        } catch {
+          // Prefetch is best-effort; the restaurant page will fetch on demand.
+        }
+      }
+    })();
+  }, [restaurants]);
 
   const addRestaurant = useCallback(async (r: Partial<Restaurant>) => {
     const added = await api.addRestaurant(r);

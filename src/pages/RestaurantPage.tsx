@@ -26,6 +26,7 @@ import {
 import { useApp } from '../hooks/useAppContext';
 import { searchRestaurants } from '../lib/api';
 import { getOrderingLinks } from '../lib/ordering';
+import { getCached, setCached } from '../lib/cache';
 import { DishCard } from '../components/DishCard';
 import { ScrollBar } from '../components/ScrollBar';
 import type { Restaurant, Dish } from '../types';
@@ -52,8 +53,10 @@ export function RestaurantPage() {
   } = useApp();
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
-  const [dishes, setDishes] = useState<Dish[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Instant paint: seed dishes from localStorage (warmed by the home page's
+  // background prefetch) so this page renders immediately instead of spinning.
+  const [dishes, setDishes] = useState<Dish[]>(() => (id ? getCached<Dish[]>(`dishes:${id}`) ?? [] : []));
+  const [loading, setLoading] = useState(() => (id ? getCached<Dish[]>(`dishes:${id}`) === null : true));
   const [heroImageError, setHeroImageError] = useState(false);
   const [dishSelectionMode, setDishSelectionMode] = useState(false);
   const [selectedDishIds, setSelectedDishIds] = useState<Set<string>>(new Set());
@@ -94,12 +97,21 @@ export function RestaurantPage() {
   }, [restaurants, id]);
 
   useEffect(() => {
-    if (id) {
-      getDishes(id).then((d) => {
-        setDishes(d);
-        setLoading(false);
-      });
+    if (!id) return;
+    // Paint from cache immediately if we have it (covers navigating between
+    // restaurants without a full remount), then refresh from Supabase.
+    const cached = getCached<Dish[]>(`dishes:${id}`);
+    if (cached) {
+      setDishes(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
     }
+    getDishes(id).then((d) => {
+      setDishes(d);
+      setCached(`dishes:${id}`, d);
+      setLoading(false);
+    });
   }, [id, getDishes]);
 
   const hasWantToTry = useMemo(() => dishes.some((d) => d.want_to_try), [dishes]);
@@ -158,7 +170,11 @@ export function RestaurantPage() {
 
   const handleDeleteDish = async (dishId: string) => {
     await deleteDish(dishId);
-    setDishes((prev) => prev.filter((d) => d.id !== dishId));
+    setDishes((prev) => {
+      const next = prev.filter((d) => d.id !== dishId);
+      if (id) setCached(`dishes:${id}`, next);
+      return next;
+    });
   };
 
   const toggleDishSelect = (dishId: string) => {
@@ -181,7 +197,11 @@ export function RestaurantPage() {
     for (const dishId of selectedDishIds) {
       await deleteDish(dishId);
     }
-    setDishes((prev) => prev.filter((d) => !selectedDishIds.has(d.id)));
+    setDishes((prev) => {
+      const next = prev.filter((d) => !selectedDishIds.has(d.id));
+      if (id) setCached(`dishes:${id}`, next);
+      return next;
+    });
     showToast(`${selectedDishIds.size} dish${selectedDishIds.size > 1 ? 'es' : ''} deleted`);
     exitDishSelectionMode();
   };
