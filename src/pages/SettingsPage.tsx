@@ -4,6 +4,7 @@ import { ArrowLeft, Palette, MapPin, X, LogOut, ScanFace, Fingerprint } from 'lu
 import { useApp } from '../hooks/useAppContext';
 import { supabase } from '../lib/supabase';
 import { isBrokenGoogleMenuUrl } from '../lib/menu';
+import { clearBrokenMenuUrls } from '../lib/api';
 import { useAppLock } from '../hooks/useAppLock';
 import { BiometryType } from '@aparajita/capacitor-biometric-auth';
 
@@ -62,10 +63,12 @@ export async function loadThemeFromServer() {
 
 export function SettingsPage() {
   const navigate = useNavigate();
-  const { restaurants, cities, updateRestaurant, showToast, refreshRestaurants } = useApp();
+  const { restaurants, cities, showToast, refreshRestaurants } = useApp();
   const { isNative, isAvailable, biometryType, enabled: faceIdEnabled, setEnabled: setFaceIdEnabled } = useAppLock();
 
   const [currentTheme, setCurrentTheme] = useState<ThemeName>(getTheme());
+  const [fixingLinks, setFixingLinks] = useState(false);
+  const brokenLinkCount = restaurants.filter((r) => isBrokenGoogleMenuUrl(r.menu_url)).length;
   const [mergeFrom, setMergeFrom] = useState<string[]>([]);
   const [mergeTo, setMergeTo] = useState('');
 
@@ -357,26 +360,31 @@ export function SettingsPage() {
           <button
             className="btn btn-secondary"
             style={{ width: '100%', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+            disabled={fixingLinks}
             onClick={async () => {
               // This button used to build menu links as "<maps link>/menu",
               // which is a dead URL. Clear those so the app falls back to the
               // restaurant's website instead of showing a link to nowhere.
-              let cleared = 0;
-              for (const r of restaurants) {
-                if (isBrokenGoogleMenuUrl(r.menu_url)) {
-                  await updateRestaurant(r.id, { menu_url: '' });
-                  cleared++;
-                }
+              const broken = restaurants.filter((r) => isBrokenGoogleMenuUrl(r.menu_url));
+              if (broken.length === 0) {
+                showToast('No broken menu links found');
+                return;
               }
-              await refreshRestaurants();
-              showToast(
-                cleared > 0
-                  ? `Removed ${cleared} broken menu link${cleared !== 1 ? 's' : ''}`
-                  : 'No broken menu links found',
-              );
+              setFixingLinks(true);
+              try {
+                // One request for the whole set — a per-row loop meant a
+                // round trip each for every affected restaurant.
+                const cleared = await clearBrokenMenuUrls(broken.map((r) => r.id));
+                await refreshRestaurants();
+                showToast(`Fixed ${cleared} broken menu link${cleared !== 1 ? 's' : ''}`);
+              } catch {
+                showToast('Could not fix the links. Check your connection and try again.');
+              } finally {
+                setFixingLinks(false);
+              }
             }}
           >
-            Clear Broken Menu Links
+            {fixingLinks ? 'Fixing…' : `Fix Broken Menu Links${brokenLinkCount > 0 ? ` (${brokenLinkCount})` : ''}`}
           </button>
         </div>
 

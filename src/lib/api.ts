@@ -86,6 +86,22 @@ export async function updateRestaurant(id: string, updates: Partial<Restaurant>)
   return data;
 }
 
+// Clear the dead menu links written by an earlier version, which built them
+// as "<google maps url>/menu" — a URL whose suffix lands inside the query
+// string and resolves to nothing. Blanking them makes the app fall back to
+// the restaurant's own website. Done in one request rather than per row.
+// Reversible: the bad value was derived from google_url.
+export async function clearBrokenMenuUrls(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  const { data, error } = await supabase
+    .from('restaurants')
+    .update({ menu_url: '', updated_at: new Date().toISOString() })
+    .in('id', ids)
+    .select('id');
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
 export async function deleteRestaurant(id: string) {
   const { error } = await supabase.from('restaurants').delete().eq('id', id);
   if (error) throw error;
