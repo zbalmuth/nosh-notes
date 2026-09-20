@@ -242,6 +242,10 @@ export async function getRestaurantMenu(restaurantId: string): Promise<Restauran
   return data as RestaurantMenu | null;
 }
 
+// How long a scan that found nothing is trusted before the automatic
+// prefetch will try that restaurant again. An explicit Rescan ignores this.
+export const MENU_RETRY_MS = 7 * 24 * 60 * 60 * 1000;
+
 export async function saveRestaurantMenu(
   restaurantId: string,
   sourceUrl: string,
@@ -270,11 +274,11 @@ export async function scanAndCacheMenu(
     name: d.name,
     dish_type: d.dish_type,
   }));
-  // Only cache a real result — caching an empty list would mask a transient
-  // failure behind a permanent "no menu found".
-  if (items.length > 0) {
-    await saveRestaurantMenu(restaurantId, url, items, result.note || '');
-  }
+  // Record the attempt even when it found nothing, so a page that has no
+  // readable menu isn't rescanned — and re-billed — on every single visit.
+  // A thrown error is deliberately not recorded, so a network blip still
+  // retries, and MENU_RETRY_MS lets a barren result be tried again later.
+  await saveRestaurantMenu(restaurantId, url, items, result.note || '');
   return { items, note: result.note || '' };
 }
 

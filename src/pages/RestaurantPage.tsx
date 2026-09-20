@@ -24,7 +24,7 @@ import {
   StickyNote,
 } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
-import { searchRestaurants, getRestaurantMenu, scanAndCacheMenu } from '../lib/api';
+import { searchRestaurants, getRestaurantMenu, scanAndCacheMenu, MENU_RETRY_MS } from '../lib/api';
 import { getOrderingLinks } from '../lib/ordering';
 import { getCached, setCached } from '../lib/cache';
 import { resolveMenuUrl, isBrokenGoogleMenuUrl } from '../lib/menu';
@@ -127,6 +127,11 @@ export function RestaurantPage() {
       if (cancelled) return;
       if (cached && cached.items.length > 0) {
         setMenuReady(true);
+        return;
+      }
+      // A previous scan found nothing. Don't pay to ask again on every visit
+      // — wait out the retry window. Rescan in the URL tab still works.
+      if (cached && Date.now() - new Date(cached.scanned_at).getTime() < MENU_RETRY_MS) {
         return;
       }
       if (!url) return;
