@@ -231,7 +231,8 @@ a {
   border-radius: var(--radius);
   background: var(--bg-secondary);
   color: var(--text-primary);
-  font-size: 15px;
+  /* 16px minimum: iOS zooms the whole page when a focused control is smaller */
+  font-size: 16px;
   transition: border-color 0.2s;
 }
 .input:focus {
@@ -485,7 +486,8 @@ a {
   flex: 1;
   border: none;
   background: none;
-  font-size: 15px;
+  /* 16px minimum: iOS zooms the whole page when a focused control is smaller */
+  font-size: 16px;
   color: var(--text-primary);
 }
 .search-bar input::placeholder {
@@ -630,7 +632,8 @@ textarea.input {
   border-radius: var(--radius);
   background: var(--bg-secondary);
   color: var(--text-primary);
-  font-size: 15px;
+  /* 16px minimum: iOS zooms the whole page when a focused control is smaller */
+  font-size: 16px;
   appearance: none;
   cursor: pointer;
 }
