@@ -282,7 +282,10 @@ async function searchGoogle(query: string, location?: string, latitude?: number,
         website: details.website || '',
         yelp_url: '',
         google_url: details.url || '',
-        menu_url: details.url ? `${details.url.replace(/\/$/, '')}/menu` : '',
+        // No menu field exists in the Places API; appending "/menu" to the
+        // Maps place link (…/?cid=123…) yields a dead URL. Leave it empty —
+        // the app falls back to the restaurant's own website.
+        menu_url: '',
         image_url: imageUrl,
         photos: [],
         price_level: priceMap[details.price_level ?? place.price_level] || '',

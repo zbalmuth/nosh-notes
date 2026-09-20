@@ -5,6 +5,7 @@ import { useApp } from '../hooks/useAppContext';
 import { RatingSlider } from '../components/RatingSlider';
 import { ScrollBar } from '../components/ScrollBar';
 import { analyzeDishImage, analyzeMenuUrl, uploadPhoto, getRestaurantMenu, saveRestaurantMenu } from '../lib/api';
+import { resolveMenuUrl } from '../lib/menu';
 import { DISH_TYPES, getRatingLabel, getRatingColor } from '../types';
 import type { Dish, DishType } from '../types';
 
@@ -236,9 +237,12 @@ export function AddDishPage() {
     return () => { cancelled = true; };
   }, [restaurantId, getDishes, toScannedDishes]);
 
-  // Nothing saved yet — offer the restaurant's own menu link as the default.
+  // Nothing saved yet — offer the restaurant's own menu link as the default,
+  // falling back to its website when no usable menu URL is on file.
   useEffect(() => {
-    if (!menuUrl && restaurant?.menu_url) setMenuUrl(restaurant.menu_url);
+    if (menuUrl) return;
+    const fallback = resolveMenuUrl(restaurant);
+    if (fallback) setMenuUrl(fallback);
   }, [restaurant, menuUrl]);
 
   const handleAnalyzeUrl = async () => {

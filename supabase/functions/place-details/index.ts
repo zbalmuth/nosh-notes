@@ -117,7 +117,10 @@ async function googleDetails(placeId: string) {
     photos,
     hours,
     highlights,
-    menu_url: r.url ? `${String(r.url).replace(/\/$/, '')}/menu` : '',
+    // The Places API has no menu field. r.url is the Maps place link
+    // (…/?cid=123…) — appending "/menu" produces a dead URL, so leave this
+    // empty and let the app fall back to the restaurant's own website.
+    menu_url: '',
     website: r.website || '',
     phone: r.formatted_phone_number || '',
   });

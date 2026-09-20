@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, MapPin, X, Loader, Plus, UtensilsCrossed } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { searchRestaurants, searchDishes } from '../lib/api';
 import type { SearchResult, SearchProvider, Dish } from '../types';
 import { getRatingColor } from '../types';
-import { detectLocation } from '../lib/location';
+import { detectLocation, getLocationPref } from '../lib/location';
 import { RestaurantDetailDialog } from '../components/RestaurantDetailDialog';
 
 type SearchMode = 'all' | 'nearby';
@@ -40,18 +40,35 @@ export function SearchPage() {
     inputRef.current?.focus();
   }, []);
 
-  // Acquire location for "Discover Nearby". Use active mode (skipIfDenied=false)
-  // so we get a real GPS fix even when the browser/WebView permissions API
-  // reports 'prompt' (common in the Capacitor iOS WebView) — silent mode would
-  // bail and leave the search un-located, producing random worldwide results.
+  // Acquire location for "Discover Nearby".
+  //
+  // On mount only silent mode runs (skipIfDenied=true): the input is
+  // autofocused above, so the keyboard is up, and iOS lays a permission alert
+  // out in the space left over — which clips its bottom button off screen.
+  // Once permission has been granted, this silently returns a fix and no
+  // dialog is ever involved.
   useEffect(() => {
-    detectLocation(false).then((loc) => {
+    detectLocation(true).then((loc) => {
       if (!loc) return;
       setLatitude(loc.lat);
       setLongitude(loc.lng);
       if (loc.city) setLocationLabel(loc.city);
     });
   }, []);
+
+  // First-time prompt, deferred until a nearby search actually needs a fix.
+  // The keyboard is dismissed first so the alert gets the full screen and all
+  // three of its buttons are reachable.
+  const promptForLocation = useCallback(async () => {
+    if (latitude != null && longitude != null) return;
+    if (getLocationPref() === 'denied') return;
+    inputRef.current?.blur();
+    const loc = await detectLocation(false);
+    if (!loc) return;
+    setLatitude(loc.lat);
+    setLongitude(loc.lng);
+    if (loc.city) setLocationLabel(loc.city);
+  }, [latitude, longitude]);
 
   // Real-time collection filter
   const collectionResults = useMemo(() => {
@@ -74,6 +91,10 @@ export function SearchPage() {
       return;
     }
     debounceRef.current = setTimeout(async () => {
+      // A nearby search is about to run — ask for location now if we still
+      // need it. Awaited so the first search already carries the fix.
+      await promptForLocation();
+
       // Dish search
       setSearchingDishes(true);
       searchDishes(query)
@@ -94,7 +115,7 @@ export function SearchPage() {
         .finally(() => setDiscovering(false));
     }, 700);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query, provider, locationLabel, customLocation, latitude, longitude]);
+  }, [query, provider, locationLabel, customLocation, latitude, longitude, promptForLocation]);
 
   const clearQuery = () => {
     setQuery('');

@@ -27,6 +27,7 @@ import { useApp } from '../hooks/useAppContext';
 import { searchRestaurants, getRestaurantMenu, scanAndCacheMenu } from '../lib/api';
 import { getOrderingLinks } from '../lib/ordering';
 import { getCached, setCached } from '../lib/cache';
+import { resolveMenuUrl, isBrokenGoogleMenuUrl } from '../lib/menu';
 import { DishCard } from '../components/DishCard';
 import { ScrollBar } from '../components/ScrollBar';
 import type { Restaurant, Dish } from '../types';
@@ -121,7 +122,7 @@ export function RestaurantPage() {
   useEffect(() => {
     if (!id || !restaurant) return;
     let cancelled = false;
-    const url = safeHref(restaurant.menu_url);
+    const url = resolveMenuUrl(restaurant);
     getRestaurantMenu(id).then((cached) => {
       if (cancelled) return;
       if (cached && cached.items.length > 0) {
@@ -354,7 +355,12 @@ export function RestaurantPage() {
     return `https://www.yelp.com/search?find_desc=${encodeURIComponent(restaurant.name)}&find_loc=${encodeURIComponent(loc)}`;
   })();
 
-  const hasLinks = restaurant.website || yelpUrl || restaurant.google_url || restaurant.menu_url;
+  // Only link out to a genuine menu URL. Older records hold a fabricated
+  // "<maps link>/menu" address that leads nowhere, so those are dropped.
+  const menuLinkUrl = isBrokenGoogleMenuUrl(restaurant.menu_url)
+    ? undefined
+    : safeHref(restaurant.menu_url);
+  const hasLinks = restaurant.website || yelpUrl || restaurant.google_url || menuLinkUrl;
 
   return (
     <div>
@@ -508,7 +514,7 @@ export function RestaurantPage() {
             {infoExpanded && (
               <div style={{ padding: '0 14px 12px', borderTop: '1px solid var(--border)' }}>
                 {/* Phone + Menu on same line */}
-                {(restaurant.phone || restaurant.menu_url) && (
+                {(restaurant.phone || menuLinkUrl) && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
                     {restaurant.phone && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -518,8 +524,8 @@ export function RestaurantPage() {
                         </a>
                       </div>
                     )}
-                    {safeHref(restaurant.menu_url) && (
-                      <a href={safeHref(restaurant.menu_url)} target="_blank" rel="noopener noreferrer"
+                    {menuLinkUrl && (
+                      <a href={menuLinkUrl} target="_blank" rel="noopener noreferrer"
                         style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: 'var(--electric-blue)' }}>
                         <BookOpen size={14} /> Menu
                       </a>

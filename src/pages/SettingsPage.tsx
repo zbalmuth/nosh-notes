@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Palette, MapPin, X, LogOut, ScanFace, Fingerprint } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { supabase } from '../lib/supabase';
+import { isBrokenGoogleMenuUrl } from '../lib/menu';
 import { useAppLock } from '../hooks/useAppLock';
 import { BiometryType } from '@aparajita/capacitor-biometric-auth';
 
@@ -357,18 +358,25 @@ export function SettingsPage() {
             className="btn btn-secondary"
             style={{ width: '100%', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
             onClick={async () => {
-              let fixed = 0;
+              // This button used to build menu links as "<maps link>/menu",
+              // which is a dead URL. Clear those so the app falls back to the
+              // restaurant's website instead of showing a link to nowhere.
+              let cleared = 0;
               for (const r of restaurants) {
-                if (r.google_url && !r.menu_url) {
-                  await updateRestaurant(r.id, { menu_url: `${r.google_url.replace(/\/$/, '')}/menu` });
-                  fixed++;
+                if (isBrokenGoogleMenuUrl(r.menu_url)) {
+                  await updateRestaurant(r.id, { menu_url: '' });
+                  cleared++;
                 }
               }
               await refreshRestaurants();
-              showToast(fixed > 0 ? `Fixed menu links for ${fixed} restaurants` : 'All restaurants already have menu links');
+              showToast(
+                cleared > 0
+                  ? `Removed ${cleared} broken menu link${cleared !== 1 ? 's' : ''}`
+                  : 'No broken menu links found',
+              );
             }}
           >
-            Fix Menu Links for Existing Restaurants
+            Clear Broken Menu Links
           </button>
         </div>
 
