@@ -137,3 +137,28 @@ grant select, insert, update, delete on public.dishes to service_role;
 grant select on public.user_preferences to anon;
 grant select, insert, update, delete on public.user_preferences to authenticated;
 grant select, insert, update, delete on public.user_preferences to service_role;
+
+-- ─── Cached restaurant menus ────────────────────────────────────────────────
+-- Extracted menu items per restaurant, so a menu is scanned from the web once
+-- and then reused. One row per restaurant.
+CREATE TABLE IF NOT EXISTS restaurant_menus (
+  restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  source_url TEXT,
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  note TEXT DEFAULT '',
+  scanned_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE restaurant_menus ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own menus" ON restaurant_menus FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own menus" ON restaurant_menus FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own menus" ON restaurant_menus FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own menus" ON restaurant_menus FOR DELETE USING (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_restaurant_menus_user_id ON restaurant_menus(user_id);
+
+grant select on public.restaurant_menus to anon;
+grant select, insert, update, delete on public.restaurant_menus to authenticated;
+grant select, insert, update, delete on public.restaurant_menus to service_role;

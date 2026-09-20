@@ -94,6 +94,21 @@ export interface PlaceDetails {
   highlights: string; // Google AI summary (must-order dishes / vibe); '' if unavailable
 }
 
+// A single item extracted from a restaurant's online menu. Cached in the
+// `restaurant_menus` table so a menu is scanned from the web only once.
+export interface MenuItem {
+  name: string;
+  dish_type: string;
+}
+
+export interface RestaurantMenu {
+  restaurant_id: string;
+  source_url: string;
+  items: MenuItem[];
+  note: string;
+  scanned_at: string;
+}
+
 export const DISH_TYPES: { value: DishType; label: string }[] = [
   { value: 'appetizer', label: 'Appetizer' },
   { value: 'salad', label: 'Salad' },

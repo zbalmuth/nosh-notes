@@ -1,10 +1,10 @@
-import { useState, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Camera, Loader, X, Check, Sparkles, Link, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Camera, Loader, X, Check, Sparkles, Link, ChevronLeft, ChevronRight, AlertCircle, RefreshCw } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { RatingSlider } from '../components/RatingSlider';
 import { ScrollBar } from '../components/ScrollBar';
-import { analyzeDishImage, analyzeMenuUrl, uploadPhoto } from '../lib/api';
+import { analyzeDishImage, analyzeMenuUrl, uploadPhoto, getRestaurantMenu, saveRestaurantMenu } from '../lib/api';
 import { DISH_TYPES, getRatingLabel, getRatingColor } from '../types';
 import type { Dish, DishType } from '../types';
 
@@ -79,8 +79,12 @@ export function AddDishPage() {
 
   const restaurant = restaurants.find((r) => r.id === restaurantId);
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState<'manual' | 'scan' | 'url'>('manual');
+  // Tab state. The restaurant page links straight to ?tab=url once a menu
+  // has been scanned and cached.
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<'manual' | 'scan' | 'url'>(
+    searchParams.get('tab') === 'url' ? 'url' : 'manual',
+  );
 
   // Manual entry state
   const [name, setName] = useState('');
@@ -104,6 +108,9 @@ export function AddDishPage() {
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlDishes, setUrlDishes] = useState<ScannedDish[]>([]);
   const [urlNote, setUrlNote] = useState('');
+  // Set when the list on screen came from the saved menu rather than a fresh
+  // scan, so we can label it and offer a rescan.
+  const [menuScannedAt, setMenuScannedAt] = useState<string | null>(null);
 
   // ─── Scan handlers ──────────────────────────────────────────────────────────
 
@@ -198,6 +205,42 @@ export function AddDishPage() {
 
   // ─── URL handlers ───────────────────────────────────────────────────────────
 
+  const toScannedDishes = useCallback(
+    (items: { name: string; dish_type: string }[], existing: Dish[]): ScannedDish[] =>
+      items.map((d) => ({
+        name: d.name,
+        dish_type: d.dish_type,
+        action: 'ignore' as const,
+        rating: 7,
+        notes: '',
+        duplicate: findDuplicate(d.name, existing),
+      })),
+    [],
+  );
+
+  // Load the saved menu on open: if this restaurant has already been scanned
+  // (the restaurant page prefetches on first visit), show the dish list right
+  // away instead of making the user find a URL and wait on the API again.
+  useEffect(() => {
+    if (!restaurantId) return;
+    let cancelled = false;
+    Promise.all([getRestaurantMenu(restaurantId), getDishes(restaurantId)]).then(
+      ([menu, existingDishes]) => {
+        if (cancelled || !menu || menu.items.length === 0) return;
+        setMenuUrl(menu.source_url || '');
+        setUrlDishes(toScannedDishes(menu.items, existingDishes));
+        setUrlNote('');
+        setMenuScannedAt(menu.scanned_at);
+      },
+    );
+    return () => { cancelled = true; };
+  }, [restaurantId, getDishes, toScannedDishes]);
+
+  // Nothing saved yet — offer the restaurant's own menu link as the default.
+  useEffect(() => {
+    if (!menuUrl && restaurant?.menu_url) setMenuUrl(restaurant.menu_url);
+  }, [restaurant, menuUrl]);
+
   const handleAnalyzeUrl = async () => {
     if (!menuUrl.trim() || !restaurantId) return;
     const trimmedUrl = menuUrl.trim();
@@ -207,22 +250,20 @@ export function AddDishPage() {
     }
     setUrlLoading(true);
     setUrlNote('');
+    setMenuScannedAt(null);
     try {
       // Fetch existing dishes and analyze URL in parallel
       const [result, existingDishes] = await Promise.all([
-        analyzeMenuUrl(menuUrl.trim()),
+        analyzeMenuUrl(trimmedUrl),
         getDishes(restaurantId),
       ]);
-      const dishes = (result.dishes || []).map((d: { name: string; dish_type: string; [key: string]: unknown }) => ({
-        name: d.name,
-        dish_type: d.dish_type,
-        action: 'ignore' as const,
-        rating: 7,
-        notes: '',
-        duplicate: findDuplicate(d.name, existingDishes),
-      }));
-      setUrlDishes(dishes);
+      const items = (result.dishes || []).map((d) => ({ name: d.name, dish_type: d.dish_type }));
+      setUrlDishes(toScannedDishes(items, existingDishes));
       setUrlNote(result.note || '');
+      // Save the menu so this restaurant never has to be scanned again.
+      if (items.length > 0) {
+        saveRestaurantMenu(restaurantId, trimmedUrl, items, result.note || '').catch(() => {});
+      }
     } catch (err) {
       setUrlNote(err instanceof Error ? err.message : 'Failed to analyze menu');
     } finally {
@@ -766,7 +807,9 @@ export function AddDishPage() {
           {urlDishes.length === 0 && !urlLoading && (
             <div>
               <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 14, textAlign: 'center' }}>
-                Paste a menu URL and we&apos;ll extract the dishes for you
+                {menuUrl
+                  ? "Import this restaurant's menu and pick what you had"
+                  : "Paste a menu URL and we'll extract the dishes for you"}
               </p>
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <input
@@ -808,6 +851,29 @@ export function AddDishPage() {
               {urlNote && (
                 <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 12, textAlign: 'center' }}>{urlNote}</p>
               )}
+              {menuScannedAt && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  marginBottom: 12, padding: '8px 12px',
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius)',
+                }}>
+                  <span style={{ flex: 1, fontSize: 12, color: 'var(--palm-green)' }}>
+                    Saved menu · scanned {new Date(menuScannedAt).toLocaleDateString()}
+                  </span>
+                  <button
+                    onClick={handleAnalyzeUrl}
+                    disabled={urlLoading || !menuUrl.trim()}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 4,
+                      background: 'none', border: 'none',
+                      color: 'var(--electric-blue)', fontSize: 12, padding: 0,
+                    }}
+                  >
+                    <RefreshCw size={12} /> Rescan
+                  </button>
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
                   {urlDishes.length} items found — choose what to add:
@@ -831,7 +897,7 @@ export function AddDishPage() {
                 <button
                   className="btn btn-secondary"
                   style={{ flex: 1 }}
-                  onClick={() => { setUrlDishes([]); setMenuUrl(''); setUrlNote(''); }}
+                  onClick={() => { setUrlDishes([]); setMenuUrl(''); setUrlNote(''); setMenuScannedAt(null); }}
                 >
                   Clear
                 </button>

@@ -24,7 +24,7 @@ import {
   StickyNote,
 } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
-import { searchRestaurants } from '../lib/api';
+import { searchRestaurants, getRestaurantMenu, scanAndCacheMenu } from '../lib/api';
 import { getOrderingLinks } from '../lib/ordering';
 import { getCached, setCached } from '../lib/cache';
 import { DishCard } from '../components/DishCard';
@@ -113,6 +113,32 @@ export function RestaurantPage() {
       setLoading(false);
     });
   }, [id, getDishes]);
+
+  // Menu prefetch: the first time a saved restaurant is opened, scan its menu
+  // URL in the background and cache the result. Every later visit — and the
+  // Add Dish "URL" tab — reads that cache instead of hitting the API again.
+  const [menuReady, setMenuReady] = useState(false);
+  useEffect(() => {
+    if (!id || !restaurant) return;
+    let cancelled = false;
+    const url = safeHref(restaurant.menu_url);
+    getRestaurantMenu(id).then((cached) => {
+      if (cancelled) return;
+      if (cached && cached.items.length > 0) {
+        setMenuReady(true);
+        return;
+      }
+      if (!url) return;
+      // Best-effort and silent: a failed prefetch just means the URL tab
+      // scans on demand, as it did before.
+      scanAndCacheMenu(id, url)
+        .then(({ items }) => {
+          if (!cancelled && items.length > 0) setMenuReady(true);
+        })
+        .catch(() => {});
+    });
+    return () => { cancelled = true; };
+  }, [id, restaurant]);
 
   const hasWantToTry = useMemo(() => dishes.some((d) => d.want_to_try), [dishes]);
 
@@ -773,12 +799,27 @@ export function RestaurantPage() {
         </div>
       </div>
 
-      {/* FAB to add dish */}
+      {/* FAB to add dish. Once the menu has been scanned, jump straight to the
+          menu picker and mark the button so it's clear there's a list waiting. */}
       <button
         className="fab"
-        onClick={() => navigate(`/restaurant/${restaurant.id}/add-dish`)}
+        onClick={() => navigate(`/restaurant/${restaurant.id}/add-dish${menuReady ? '?tab=url' : ''}`)}
       >
         <Plus size={28} />
+        {menuReady && (
+          <span
+            title="Menu ready — pick from the menu"
+            style={{
+              position: 'absolute', top: 2, right: 2,
+              width: 16, height: 16, borderRadius: '50%',
+              background: 'var(--palm-green)', color: 'var(--white)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: '2px solid var(--bg-primary)',
+            }}
+          >
+            <BookOpen size={8} />
+          </span>
+        )}
       </button>
 
       {/* Edit Restaurant Sheet */}

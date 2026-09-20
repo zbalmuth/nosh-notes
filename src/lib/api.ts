@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { Restaurant, Dish, RestaurantList, SearchResult, SearchProvider, PlaceDetails } from '../types';
+import type { Restaurant, Dish, RestaurantList, SearchResult, SearchProvider, PlaceDetails, MenuItem, RestaurantMenu } from '../types';
 
 // ─── Auth ───────────────────────────────────────────────────────────────────
 export async function signUp(email: string, password: string) {
@@ -209,6 +209,57 @@ export async function analyzeMenuUrl(url: string): Promise<{
   });
   if (error) throw error;
   return data;
+}
+
+// ─── Cached Restaurant Menus ────────────────────────────────────────────────
+// A restaurant's menu is scanned from the web once and stored, so opening it
+// again is instant and costs no API call.
+
+export async function getRestaurantMenu(restaurantId: string): Promise<RestaurantMenu | null> {
+  const { data, error } = await supabase
+    .from('restaurant_menus')
+    .select('restaurant_id, source_url, items, note, scanned_at')
+    .eq('restaurant_id', restaurantId)
+    .maybeSingle();
+  // A missing table (feature not migrated yet) must not break the page.
+  if (error) return null;
+  return data as RestaurantMenu | null;
+}
+
+export async function saveRestaurantMenu(
+  restaurantId: string,
+  sourceUrl: string,
+  items: MenuItem[],
+  note = '',
+): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  await supabase.from('restaurant_menus').upsert({
+    restaurant_id: restaurantId,
+    user_id: user.id,
+    source_url: sourceUrl,
+    items,
+    note,
+    scanned_at: new Date().toISOString(),
+  });
+}
+
+// Scan `url` and cache the result against the restaurant. Returns the items.
+export async function scanAndCacheMenu(
+  restaurantId: string,
+  url: string,
+): Promise<{ items: MenuItem[]; note: string }> {
+  const result = await analyzeMenuUrl(url);
+  const items: MenuItem[] = (result.dishes || []).map((d) => ({
+    name: d.name,
+    dish_type: d.dish_type,
+  }));
+  // Only cache a real result — caching an empty list would mask a transient
+  // failure behind a permanent "no menu found".
+  if (items.length > 0) {
+    await saveRestaurantMenu(restaurantId, url, items, result.note || '');
+  }
+  return { items, note: result.note || '' };
 }
 
 // ─── Photo Upload ───────────────────────────────────────────────────────────
