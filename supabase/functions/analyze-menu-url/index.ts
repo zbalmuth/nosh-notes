@@ -24,6 +24,11 @@ Extract every item you can find. Include drinks, appetizers, desserts, sides, et
 
 const MAX_FETCH_BYTES = 10 * 1024 * 1024; // 10 MB cap on fetched content
 
+// A restaurant's homepage rarely holds the menu itself — it links to it, often
+// as a PDF or a /menu page. Follow at most this many of those links, best
+// candidate first, before giving up.
+const MAX_MENU_LINKS_FOLLOWED = 3;
+
 // Returns true if the dotted-decimal IPv4 string falls in a private/reserved range.
 function isPrivateDottedIp(ip: string): boolean {
   return (
@@ -90,6 +95,164 @@ function isAllowedUrl(urlStr: string): boolean {
   return true;
 }
 
+// One fetched thing the model can read: a menu image, a PDF, or an HTML page.
+type Source =
+  | { kind: 'image'; url: string; mime: string; bytes: ArrayBuffer }
+  | { kind: 'pdf'; url: string; bytes: ArrayBuffer }
+  | { kind: 'html'; url: string; html: string };
+
+// Fetch a URL and classify it, applying the SSRF and size rules to every hop —
+// followed menu links are as untrusted as the URL the user typed. Returns null
+// when the URL can't be used, so the caller can move on to the next candidate.
+async function loadSource(url: string): Promise<Source | null> {
+  if (!isAllowedUrl(url)) return null;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml,application/pdf,image/*;q=0.9,*/*;q=0.8',
+      },
+      redirect: 'follow',
+    });
+  } catch {
+    return null;
+  }
+  // Validate the final URL after redirects to prevent SSRF bypass via open redirects
+  if (!isAllowedUrl(res.url)) return null;
+  if (!res.ok) return null;
+
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
+  const contentLen = parseInt(res.headers.get('content-length') || '0', 10);
+  const finalUrl = res.url || url;
+
+  if (contentType.includes('image/') || contentType.includes('application/pdf')) {
+    if (contentLen > MAX_FETCH_BYTES) return null;
+    const bytes = await res.arrayBuffer();
+    if (bytes.byteLength > MAX_FETCH_BYTES) return null;
+    return contentType.includes('image/')
+      ? { kind: 'image', url: finalUrl, mime: contentType.split(';')[0].trim(), bytes }
+      : { kind: 'pdf', url: finalUrl, bytes };
+  }
+
+  // Anything else is treated as HTML. Cap it like the binary formats do — a
+  // runaway page would otherwise be read into memory whole.
+  if (contentLen > MAX_FETCH_BYTES) return null;
+  const html = await res.text();
+  if (html.length > MAX_FETCH_BYTES) return null;
+  return { kind: 'html', url: finalUrl, html };
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&rsquo;/g, "'")
+    .replace(/&lsquo;/g, "'")
+    .replace(/&rdquo;/g, '"')
+    .replace(/&ldquo;/g, '"')
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–')
+    .replace(/&#\d+;/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// How much this text reads like an actual menu rather than a landing page.
+// Prices are the giveaway: a homepage talks about the restaurant, a menu lists
+// things with numbers next to them.
+function menuScore(text: string): number {
+  const prices = (text.match(/(?:[$£€]\s?\d{1,3}(?:[.,]\d{2})?)|(?:\b\d{1,3}\.\d{2}\b)/g) || []).length;
+  const sections = (text.match(/\b(appetizers?|starters?|entr[ée]es?|mains?|desserts?|salads?|soups?|sides?|beverages?|drinks?|wine list|couscous|tagines?)\b/gi) || []).length;
+  return prices * 2 + sections;
+}
+
+// "Menu" is the word that actually means a menu; the rest are hints that often
+// sit on a marketing page instead, so they count for less.
+const STRONG_MENU_WORD = /\b(menus?|carte)\b/i;
+const WEAK_MENU_WORD = /\b(food|dining|lunch|dinner|breakfast|brunch|takeout|order)\b/i;
+
+function menuWordScore(value: string): number {
+  if (STRONG_MENU_WORD.test(value)) return 3;
+  if (WEAK_MENU_WORD.test(value)) return 1;
+  return 0;
+}
+
+function isMenuish(value: string): boolean {
+  return menuWordScore(value) > 0;
+}
+
+// Menu links on a page, best candidate first. Scores a link on where "menu"
+// shows up (the href, the link text) and on the file type it points at, since
+// a linked PDF is almost always the menu itself.
+function findMenuLinks(html: string, baseUrl: string): string[] {
+  const scored = new Map<string, number>();
+
+  const anchors = html.matchAll(/<a\b[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi);
+  for (const [, rawHref, rawText] of anchors) {
+    const href = rawHref.trim();
+    if (!href || /^(#|mailto:|tel:|javascript:|data:)/i.test(href)) continue;
+
+    let resolved: string;
+    try {
+      resolved = new URL(href, baseUrl).toString();
+    } catch {
+      continue;
+    }
+    if (!isAllowedUrl(resolved)) continue;
+
+    const text = stripHtml(rawText);
+    const path = (() => { try { return new URL(resolved).pathname; } catch { return resolved; } })();
+    const isPdf = /\.pdf(\?|#|$)/i.test(resolved);
+    const isImage = /\.(png|jpe?g|webp|gif)(\?|#|$)/i.test(resolved);
+
+    // A PDF or image with no menu wording anywhere is just as likely to be a
+    // press photo or a wine-club flyer, so the file type alone never qualifies
+    // a link — it only breaks ties between links that already mention a menu.
+    const wordScore = menuWordScore(path) + menuWordScore(text);
+    if (wordScore === 0) continue;
+    if (resolved.split('#')[0] === baseUrl.split('#')[0]) continue;
+
+    const score = wordScore + (isPdf ? 2 : isImage ? 1 : 0);
+
+    const key = resolved.split('#')[0];
+    scored.set(key, Math.max(scored.get(key) ?? 0, score));
+  }
+
+  return [...scored.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([url]) => url)
+    .slice(0, MAX_MENU_LINKS_FOLLOWED);
+}
+
+// Given whatever the user's URL turned out to be, return the thing most worth
+// showing the model. For an HTML page that isn't itself a menu, that usually
+// means following one of its menu links.
+async function resolveBestSource(source: Source): Promise<Source> {
+  if (source.kind !== 'html') return source;
+
+  const ownText = stripHtml(source.html);
+  const ownScore = menuScore(ownText);
+  // A page already sitting at /menu with prices on it needs no further hops.
+  if (isMenuish(new URL(source.url).pathname) && ownScore > 0) return source;
+
+  for (const link of findMenuLinks(source.html, source.url)) {
+    const candidate = await loadSource(link);
+    if (!candidate) continue;
+    // A linked PDF or image menu beats any amount of homepage prose.
+    if (candidate.kind !== 'html') return candidate;
+    if (menuScore(stripHtml(candidate.html)) > ownScore) return candidate;
+  }
+
+  return source;
+}
+
 async function requireAuth(req: Request): Promise<Response | null> {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
@@ -134,77 +297,33 @@ serve(async (req) => {
     const apiKey = Deno.env.get('OPENAI_API_KEY');
     if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
 
-    // Fetch the URL to determine content type
-    let contentType = '';
-    let responseData: ArrayBuffer | null = null;
-    let htmlText = '';
-
-    try {
-      const res = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml,application/pdf,image/*;q=0.9,*/*;q=0.8',
-        },
-        redirect: 'follow',
-      });
-      // Validate the final URL after redirects to prevent SSRF bypass via open redirects
-      if (!isAllowedUrl(res.url)) {
-        return new Response(
-          JSON.stringify({ error: 'URL redirected to a disallowed destination', dishes: [], note: 'The URL redirected to a disallowed destination.' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        );
-      }
-      contentType = (res.headers.get('content-type') || '').toLowerCase();
-      const contentLen = parseInt(res.headers.get('content-length') || '0', 10);
-
-      if (contentType.includes('image/')) {
-        // It's an image — read as base64
-        if (contentLen > MAX_FETCH_BYTES) {
-          // oversized — fall through to GPT knowledge fallback
-        } else {
-          responseData = await res.arrayBuffer();
-          if (responseData.byteLength > MAX_FETCH_BYTES) responseData = null;
-        }
-      } else if (contentType.includes('application/pdf')) {
-        // It's a PDF — read as base64
-        if (contentLen > MAX_FETCH_BYTES) {
-          // oversized — fall through to GPT knowledge fallback
-        } else {
-          responseData = await res.arrayBuffer();
-          if (responseData.byteLength > MAX_FETCH_BYTES) responseData = null;
-        }
-      } else {
-        // Assume HTML
-        htmlText = await res.text();
-      }
-    } catch {
-      // Fetch failed entirely
-    }
+    // Fetch the URL, then follow it to the real menu when it turns out to be a
+    // homepage that merely links to one.
+    const fetched = await loadSource(url);
+    const source = fetched ? await resolveBestSource(fetched) : null;
+    const pageText = source?.kind === 'html' ? stripHtml(source.html) : '';
 
     let messages: unknown[];
     let openaiFileId: string | null = null;
 
-    if (contentType.includes('image/') && responseData) {
+    if (source?.kind === 'image') {
       // --- IMAGE MENU: Send directly to GPT-4o vision ---
-      const base64 = base64Encode(new Uint8Array(responseData!));
-      const mimeType = contentType.split(';')[0].trim();
+      const base64 = base64Encode(new Uint8Array(source.bytes));
       messages = [
         { role: 'system', content: SYSTEM_PROMPT },
         {
           role: 'user',
           content: [
             { type: 'text', text: 'This is a photo/image of a restaurant menu. Extract all the dishes and drinks.' },
-            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+            { type: 'image_url', image_url: { url: `data:${source.mime};base64,${base64}` } },
           ],
         },
       ];
-    } else if (contentType.includes('application/pdf') && responseData) {
+    } else if (source?.kind === 'pdf') {
       // --- PDF MENU: Upload to OpenAI Files API, then reference in chat ---
-      const base64 = base64Encode(new Uint8Array(responseData!));
-
       // First upload the PDF to OpenAI
       const formData = new FormData();
-      const pdfBlob = new Blob([new Uint8Array(responseData!)], { type: 'application/pdf' });
+      const pdfBlob = new Blob([new Uint8Array(source.bytes)], { type: 'application/pdf' });
       formData.append('file', pdfBlob, 'menu.pdf');
       formData.append('purpose', 'assistants');
 
@@ -223,7 +342,7 @@ serve(async (req) => {
           {
             role: 'user',
             content: [
-              { type: 'text', text: `This is a PDF menu from ${url}. Extract ALL dishes and drinks from every section and page. Be thorough — do not skip any items.` },
+              { type: 'text', text: `This is a PDF menu from ${source.url}. Extract ALL dishes and drinks from every section and page. Be thorough — do not skip any items.` },
               { type: 'file', file: { file_id: uploadData.id } },
             ],
           },
@@ -238,30 +357,10 @@ serve(async (req) => {
           },
         ];
       }
-    } else if (htmlText.length > 200) {
+    } else if (source?.kind === 'html' && pageText.length > 200) {
       // --- HTML PAGE: Strip and send as text ---
-      let pageText = htmlText
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[\s\S]*?<\/style>/gi, '')
-        .replace(/<noscript[\s\S]*?<\/noscript>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&rsquo;/g, "'")
-        .replace(/&lsquo;/g, "'")
-        .replace(/&rdquo;/g, '"')
-        .replace(/&ldquo;/g, '"')
-        .replace(/&mdash;/g, '—')
-        .replace(/&ndash;/g, '–')
-        .replace(/&#\d+;/g, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 12000);
-
       // Also extract JSON-LD structured data
-      const jsonLdMatches = htmlText.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
+      const jsonLdMatches = source.html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
       let structuredData = '';
       if (jsonLdMatches) {
         for (const match of jsonLdMatches) {
@@ -273,15 +372,10 @@ serve(async (req) => {
         }
       }
 
-      // Check if the page might contain links to PDF/image menus
-      const pdfLinks = htmlText.match(/href="([^"]*\.pdf)"/gi) || [];
-      const imgMenuHint = pdfLinks.length > 0
-        ? `\n\nNote: The page also contains links to PDF menus: ${pdfLinks.slice(0, 3).join(', ')}. The text below is from the HTML page itself.`
-        : '';
-
+      const body = pageText.slice(0, 12000);
       const content = structuredData
-        ? `STRUCTURED MENU DATA:\n${structuredData}\n\nPAGE TEXT:\n${pageText}${imgMenuHint}`
-        : `Menu page at ${url}:\n\n${pageText}${imgMenuHint}`;
+        ? `STRUCTURED MENU DATA:\n${structuredData}\n\nPAGE TEXT:\n${body}`
+        : `Menu page at ${source.url}:\n\n${body}`;
 
       messages = [
         { role: 'system', content: SYSTEM_PROMPT },
@@ -335,6 +429,15 @@ The page content could not be fetched. Based on your knowledge of this restauran
       parsed = JSON.parse(jsonStr);
     } catch {
       parsed = { dishes: [], note: 'Failed to parse AI response' };
+    }
+
+    // The model's own wording for an empty result ("No specific menu items were
+    // listed in the provided content") tells the person nothing they can act
+    // on, so say what to try instead.
+    if (!parsed.dishes?.length) {
+      parsed.note = source
+        ? "We couldn't find a menu on that page. Try pasting a link straight to the menu, or use Scan to photograph it."
+        : "We couldn't open that page. Try another link, or use Scan to photograph the menu.";
     }
 
     return new Response(
