@@ -62,7 +62,12 @@ export function SearchPage() {
   const promptForLocation = useCallback(async () => {
     if (latitude != null && longitude != null) return;
     if (getLocationPref() === 'denied') return;
+    // blur() only starts the keyboard's dismiss animation. Wait for it to
+    // finish before prompting — an alert raised while the keyboard is still
+    // on screen is laid out in the space above it and, being a tall alert
+    // (map preview plus three buttons), gets its last button clipped.
     inputRef.current?.blur();
+    await new Promise((r) => setTimeout(r, 400));
     const loc = await detectLocation(false);
     if (!loc) return;
     setLatitude(loc.lat);
