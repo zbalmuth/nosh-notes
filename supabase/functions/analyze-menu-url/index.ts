@@ -194,9 +194,14 @@ function isMenuish(value: string): boolean {
 function findMenuLinks(html: string, baseUrl: string): string[] {
   const scored = new Map<string, number>();
 
-  const anchors = html.matchAll(/<a\b[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi);
-  for (const [, rawHref, rawText] of anchors) {
-    const href = rawHref.trim();
+  // Hand-written restaurant sites are often old HTML: unquoted href values and
+  // uppercase tags are common, and a menu link missed here is the whole feature
+  // failing, so accept all three quoting styles.
+  const anchors = html.matchAll(
+    /<a\b[^>]*?href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))[^>]*>([\s\S]*?)<\/a>/gi,
+  );
+  for (const [, dq, sq, bare, rawText] of anchors) {
+    const href = (dq ?? sq ?? bare ?? '').trim();
     if (!href || /^(#|mailto:|tel:|javascript:|data:)/i.test(href)) continue;
 
     let resolved: string;
