@@ -119,6 +119,15 @@ export const DISH_TYPES: { value: DishType; label: string }[] = [
   { value: 'dessert', label: 'Dessert' },
 ];
 
+// The menu analyzer picks a dish type, but a missing or unfamiliar value must
+// never reach the database: dishes.dish_type is free text with no constraint,
+// so an unrecognised one would save silently and then match no filter. Fall
+// back to the same default the column itself uses.
+export function normalizeDishType(value: string | null | undefined): DishType {
+  const candidate = String(value ?? '').trim().toLowerCase();
+  return DISH_TYPES.some((t) => t.value === candidate) ? (candidate as DishType) : 'entree';
+}
+
 export const RATING_LABELS: Record<number, string> = {
   0: 'Dislike',
   2: 'Edible',

@@ -1,22 +1,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Camera, Loader, X, Check, Sparkles, Link, ChevronLeft, ChevronRight, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Camera, Loader, X, Sparkles, ChevronLeft, ChevronRight, RefreshCw, UtensilsCrossed, PenLine } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { RatingSlider } from '../components/RatingSlider';
 import { ScrollBar } from '../components/ScrollBar';
+import { ScannedDishCard } from '../components/ScannedDishCard';
+import type { ScannedDish } from '../components/ScannedDishCard';
 import { analyzeDishImage, analyzeMenuUrl, uploadPhoto, getRestaurantMenu, saveRestaurantMenu } from '../lib/api';
 import { resolveMenuUrl } from '../lib/menu';
-import { DISH_TYPES, getRatingLabel, getRatingColor } from '../types';
+import { DISH_TYPES, getRatingLabel, getRatingColor, normalizeDishType } from '../types';
 import type { Dish, DishType } from '../types';
-
-interface ScannedDish {
-  name: string;
-  dish_type: string;
-  action: 'rate' | 'want_to_try' | 'ignore';
-  rating: number;
-  notes: string;
-  duplicate?: string; // name of a similar existing dish
-}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -83,9 +76,12 @@ export function AddDishPage() {
   // Tab state. The restaurant page links straight to ?tab=url once a menu
   // has been scanned and cached.
   const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<'manual' | 'scan' | 'url'>(
-    searchParams.get('tab') === 'url' ? 'url' : 'manual',
-  );
+  // Picking from the restaurant's own menu is the fast path, so it leads;
+  // typing a dish in by hand is the fallback for when that finds nothing.
+  const [activeTab, setActiveTab] = useState<'manual' | 'scan' | 'url'>(() => {
+    const requested = searchParams.get('tab');
+    return requested === 'manual' || requested === 'scan' ? requested : 'url';
+  });
 
   // Manual entry state
   const [name, setName] = useState('');
@@ -112,6 +108,7 @@ export function AddDishPage() {
   // Set when the list on screen came from the saved menu rather than a fresh
   // scan, so we can label it and offer a rescan.
   const [menuScannedAt, setMenuScannedAt] = useState<string | null>(null);
+  const [urlTypeFilter, setUrlTypeFilter] = useState<DishType | 'all'>('all');
 
   // ─── Scan handlers ──────────────────────────────────────────────────────────
 
@@ -156,7 +153,7 @@ export function AddDishPage() {
         setScannedDishes(
           result.dishes.map((d: { name: string; dish_type: string }) => ({
             name: d.name,
-            dish_type: d.dish_type || 'entree',
+            dish_type: normalizeDishType(d.dish_type),
             action: 'ignore' as const,
             rating: 7,
             notes: '',
@@ -194,7 +191,7 @@ export function AddDishPage() {
     const items: Partial<Dish>[] = toSave.map((dish) => ({
       restaurant_id: restaurantId,
       name: dish.name,
-      dish_type: dish.dish_type as DishType,
+      dish_type: normalizeDishType(dish.dish_type),
       want_to_try: dish.action === 'want_to_try',
       rating: dish.action === 'want_to_try' ? null : dish.rating,
       notes: dish.notes,
@@ -210,7 +207,7 @@ export function AddDishPage() {
     (items: { name: string; dish_type: string }[], existing: Dish[]): ScannedDish[] =>
       items.map((d) => ({
         name: d.name,
-        dish_type: d.dish_type,
+        dish_type: normalizeDishType(d.dish_type),
         action: 'ignore' as const,
         rating: 7,
         notes: '',
@@ -255,6 +252,7 @@ export function AddDishPage() {
     setUrlLoading(true);
     setUrlNote('');
     setMenuScannedAt(null);
+    setUrlTypeFilter('all');
     try {
       // Fetch existing dishes and analyze URL in parallel
       const [result, existingDishes] = await Promise.all([
@@ -289,7 +287,7 @@ export function AddDishPage() {
     const items: Partial<Dish>[] = toSave.map((dish) => ({
       restaurant_id: restaurantId,
       name: dish.name,
-      dish_type: dish.dish_type as DishType,
+      dish_type: normalizeDishType(dish.dish_type),
       want_to_try: dish.action === 'want_to_try',
       rating: dish.action === 'rate' ? dish.rating : null,
       notes: dish.notes,
@@ -350,102 +348,6 @@ export function AddDishPage() {
       setSaving(false);
     }
   };
-
-  // ─── Shared dish card for scan + URL tabs ────────────────────────────────────
-
-  function DishCard({
-    dish,
-    onUpdate,
-  }: {
-    dish: ScannedDish;
-    onUpdate: (updates: Partial<ScannedDish>) => void;
-  }) {
-    return (
-      <div
-        className="card"
-        style={{
-          padding: 14,
-          marginBottom: 10,
-          border: dish.action !== 'ignore' ? '2px solid var(--hot-pink)' : '2px solid var(--border)',
-          opacity: dish.action === 'ignore' ? 0.55 : 1,
-          transition: 'all 0.2s',
-        }}
-      >
-        {/* Duplicate warning */}
-        {dish.duplicate && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 5,
-            fontSize: 11, color: 'var(--coral)',
-            background: 'rgba(255,100,60,0.08)', borderRadius: 6,
-            padding: '4px 8px', marginBottom: 8,
-          }}>
-            <AlertCircle size={12} style={{ flexShrink: 0 }} />
-            Similar to &ldquo;{dish.duplicate}&rdquo; already in your list
-          </div>
-        )}
-
-        {/* Dish name — editable */}
-        <input
-          className="input"
-          value={dish.name}
-          onChange={(e) => onUpdate({ name: e.target.value })}
-          style={{ fontFamily: "'Righteous', cursive", fontSize: 15, marginBottom: 8, padding: '6px 10px' }}
-        />
-
-        {/* Action buttons */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: dish.action !== 'ignore' ? 10 : 0 }}>
-          <button
-            className={`chip ${dish.action === 'rate' ? 'active' : ''}`}
-            onClick={() => onUpdate({ action: dish.action === 'rate' ? 'ignore' : 'rate' })}
-            style={{ flex: 1, justifyContent: 'center' }}
-          >
-            <Check size={12} />
-            Rate
-          </button>
-          <button
-            className={`chip ${dish.action === 'want_to_try' ? 'active' : ''}`}
-            onClick={() => onUpdate({ action: dish.action === 'want_to_try' ? 'ignore' : 'want_to_try' })}
-            style={{ flex: 1, justifyContent: 'center' }}
-          >
-            <Sparkles size={12} />
-            Want to Try
-          </button>
-        </div>
-
-        {/* Rating with numeric display */}
-        {dish.action === 'rate' && (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
-              <span style={{
-                fontFamily: "'Righteous', cursive",
-                fontSize: 13,
-                color: getRatingColor(dish.rating),
-                background: `${getRatingColor(dish.rating)}18`,
-                padding: '2px 12px',
-                borderRadius: 12,
-                border: `1.5px solid ${getRatingColor(dish.rating)}40`,
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-              }}>
-                {getRatingLabel(dish.rating)} &middot; {dish.rating.toFixed(1)}/10
-              </span>
-            </div>
-            <RatingSlider value={dish.rating} onChange={(val) => onUpdate({ rating: val })} />
-          </>
-        )}
-
-        {/* Notes field — always visible */}
-        <textarea
-          className="input"
-          placeholder="Add notes (optional)"
-          value={dish.notes}
-          onChange={(e) => onUpdate({ notes: e.target.value })}
-          rows={2}
-          style={{ marginTop: 10, fontSize: 13, resize: 'none' }}
-        />
-      </div>
-    );
-  }
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -589,11 +491,12 @@ export function AddDishPage() {
       {/* Tabs */}
       <div className="provider-toggle" style={{ margin: '0 20px 4px' }}>
         <button
-          className={activeTab === 'manual' ? 'active' : ''}
-          onClick={() => setActiveTab('manual')}
+          className={activeTab === 'url' ? 'active' : ''}
+          onClick={() => setActiveTab('url')}
           style={{ flex: 1 }}
         >
-          Manual Entry
+          <UtensilsCrossed size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
+          Menu
         </button>
         <button
           className={activeTab === 'scan' ? 'active' : ''}
@@ -604,12 +507,12 @@ export function AddDishPage() {
           Scan
         </button>
         <button
-          className={activeTab === 'url' ? 'active' : ''}
-          onClick={() => setActiveTab('url')}
+          className={activeTab === 'manual' ? 'active' : ''}
+          onClick={() => setActiveTab('manual')}
           style={{ flex: 1 }}
         >
-          <Link size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
-          URL
+          <PenLine size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
+          Manual
         </button>
       </div>
 
@@ -772,7 +675,7 @@ export function AddDishPage() {
               </p>
 
               {scannedDishes.map((dish, i) => (
-                <DishCard
+                <ScannedDishCard
                   key={i}
                   dish={dish}
                   onUpdate={(updates) => updateScannedDish(i, updates)}
@@ -809,13 +712,24 @@ export function AddDishPage() {
       {activeTab === 'url' && (
         <div style={{ padding: '16px 20px 100px' }}>
           {urlDishes.length === 0 && !urlLoading && (
-            <div>
-              <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 14, textAlign: 'center' }}>
+            <div style={{ textAlign: 'center', paddingTop: 12 }}>
+              <div style={{
+                width: 64, height: 64, margin: '0 auto 14px',
+                borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'linear-gradient(135deg, var(--hot-pink), var(--purple))',
+                boxShadow: '0 0 22px rgba(255, 20, 147, 0.28)',
+              }}>
+                <UtensilsCrossed size={28} color="var(--white)" />
+              </div>
+              <h3 style={{ fontFamily: "'Righteous', cursive", fontSize: 17, margin: '0 0 6px' }}>
+                {menuUrl ? 'Pull up the menu' : 'Where’s the menu?'}
+              </h3>
+              <p style={{ color: 'var(--text-muted)', marginBottom: 18, fontSize: 13, lineHeight: 1.45 }}>
                 {menuUrl
-                  ? "Import this restaurant's menu and pick what you had"
-                  : "Paste a menu URL and we'll extract the dishes for you"}
+                  ? `We’ll read ${restaurant?.name ?? 'this restaurant'}’s menu and list every dish — just tick the ones you had.`
+                  : 'Paste a link to the menu and we’ll pull the dishes out of it.'}
               </p>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                 <input
                   className="input"
                   type="url"
@@ -823,11 +737,11 @@ export function AddDishPage() {
                   value={menuUrl}
                   onChange={(e) => setMenuUrl(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && menuUrl.trim()) handleAnalyzeUrl(); }}
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, fontSize: 13 }}
                 />
                 <button
                   className="btn btn-primary"
-                  style={{ padding: '12px 20px', whiteSpace: 'nowrap' }}
+                  style={{ padding: '12px 22px', whiteSpace: 'nowrap' }}
                   disabled={urlLoading || !menuUrl.trim()}
                   onClick={handleAnalyzeUrl}
                 >
@@ -835,11 +749,29 @@ export function AddDishPage() {
                 </button>
               </div>
               {urlNote && (
-                <p style={{ color: 'var(--coral)', fontSize: 13, textAlign: 'center' }}>{urlNote}</p>
+                <p style={{
+                  color: 'var(--coral)', fontSize: 13, lineHeight: 1.45,
+                  background: 'rgba(255,100,60,0.08)', border: '1px solid rgba(255,100,60,0.2)',
+                  borderRadius: 'var(--radius)', padding: '10px 12px', margin: '0 0 12px',
+                }}>
+                  {urlNote}
+                </p>
               )}
-              <p style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', marginTop: 8 }}>
-                Works with online menus, PDFs, and image menus
+              <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 18 }}>
+                Works with online menus, PDFs, and photos of menus
               </p>
+
+              {/* The other two ways in, for when there's no menu to read */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-secondary" style={{ flex: 1, fontSize: 13 }} onClick={() => setActiveTab('scan')}>
+                  <Camera size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
+                  Scan a menu
+                </button>
+                <button className="btn btn-secondary" style={{ flex: 1, fontSize: 13 }} onClick={() => setActiveTab('manual')}>
+                  <PenLine size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
+                  Add by hand
+                </button>
+              </div>
             </div>
           )}
 
@@ -878,30 +810,61 @@ export function AddDishPage() {
                   </button>
                 </div>
               )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-                <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
-                  {urlDishes.length} items found — choose what to add:
+
+              <div style={{ marginBottom: 10 }}>
+                <h3 style={{ fontFamily: "'Righteous', cursive", fontSize: 16, margin: '0 0 2px' }}>
+                  {urlDishes.length} dishes on the menu
+                </h3>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+                  Tap Rate or Want to Try on the ones you want
+                  {urlDishes.some((d) => d.duplicate) && (
+                    <>
+                      {' · '}
+                      {urlDishes.filter((d) => d.duplicate).length === 1
+                        ? '1 looks like a duplicate'
+                        : `${urlDishes.filter((d) => d.duplicate).length} look like duplicates`}
+                    </>
+                  )}
                 </p>
-                {urlDishes.some((d) => d.duplicate) && (
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    · {urlDishes.filter((d) => d.duplicate).length} possible duplicate{urlDishes.filter((d) => d.duplicate).length !== 1 ? 's' : ''}
-                  </span>
-                )}
               </div>
 
-              {urlDishes.map((dish, i) => (
-                <DishCard
-                  key={i}
-                  dish={dish}
-                  onUpdate={(updates) => updateUrlDish(i, updates)}
-                />
-              ))}
+              {/* Filter the list by the type the analyzer assigned */}
+              <ScrollBar className="filter-bar" style={{ marginBottom: 12 }}>
+                <button
+                  className={`dish-type-pill ${urlTypeFilter === 'all' ? 'active' : ''}`}
+                  onClick={() => setUrlTypeFilter('all')}
+                  style={{ whiteSpace: 'nowrap', flexShrink: 0, fontSize: 12 }}
+                >
+                  All {urlDishes.length}
+                </button>
+                {DISH_TYPES.filter((t) => urlDishes.some((d) => d.dish_type === t.value)).map((type) => (
+                  <button
+                    key={type.value}
+                    className={`dish-type-pill ${urlTypeFilter === type.value ? 'active' : ''}`}
+                    onClick={() => setUrlTypeFilter(type.value)}
+                    style={{ whiteSpace: 'nowrap', flexShrink: 0, fontSize: 12 }}
+                  >
+                    {type.label} {urlDishes.filter((d) => d.dish_type === type.value).length}
+                  </button>
+                ))}
+              </ScrollBar>
+
+              {urlDishes
+                .map((dish, i) => ({ dish, i }))
+                .filter(({ dish }) => urlTypeFilter === 'all' || dish.dish_type === urlTypeFilter)
+                .map(({ dish, i }) => (
+                  <ScannedDishCard
+                    key={i}
+                    dish={dish}
+                    onUpdate={(updates) => updateUrlDish(i, updates)}
+                  />
+                ))}
 
               <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
                 <button
                   className="btn btn-secondary"
                   style={{ flex: 1 }}
-                  onClick={() => { setUrlDishes([]); setMenuUrl(''); setUrlNote(''); setMenuScannedAt(null); }}
+                  onClick={() => { setUrlDishes([]); setMenuUrl(''); setUrlNote(''); setMenuScannedAt(null); setUrlTypeFilter('all'); }}
                 >
                   Clear
                 </button>
