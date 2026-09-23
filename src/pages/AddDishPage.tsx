@@ -277,6 +277,7 @@ export function AddDishPage() {
   };
 
   const selectedUrlCount = urlDishes.filter((d) => d.action !== 'ignore').length;
+  const duplicateUrlCount = urlDishes.filter((d) => d.duplicate).length;
 
   const handleSaveUrl = () => {
     if (!restaurantId) return;
@@ -782,50 +783,25 @@ export function AddDishPage() {
               {urlNote && (
                 <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 12, textAlign: 'center' }}>{urlNote}</p>
               )}
-              {menuScannedAt && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  marginBottom: 12, padding: '8px 12px',
-                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius)',
-                }}>
-                  <span style={{ flex: 1, fontSize: 12, color: 'var(--palm-green)' }}>
-                    Saved menu · scanned {new Date(menuScannedAt).toLocaleDateString()}
-                  </span>
-                  <button
-                    onClick={handleAnalyzeUrl}
-                    disabled={urlLoading || !menuUrl.trim()}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 4,
-                      background: 'none', border: 'none',
-                      color: 'var(--electric-blue)', fontSize: 12, padding: 0,
-                    }}
-                  >
-                    <RefreshCw size={12} /> Rescan
-                  </button>
+              {/* One header line does the work of the old status bar and title */}
+              <div className="menu-head">
+                <div style={{ minWidth: 0 }}>
+                  <h2 className="menu-head-title">{urlDishes.length} dishes</h2>
+                  <p className="menu-head-sub">
+                    {selectedUrlCount > 0
+                      ? `${selectedUrlCount} selected`
+                      : 'Tap a dish to add it'}
+                    {duplicateUrlCount > 0 && ` · ${duplicateUrlCount} already saved`}
+                    {menuScannedAt && ` · scanned ${new Date(menuScannedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`}
+                  </p>
                 </div>
-              )}
-
-              <div style={{ margin: '2px 2px 4px' }}>
-                <h2 style={{
-                  fontFamily: "'Righteous', cursive", fontSize: 20,
-                  margin: '0 0 3px', color: 'var(--text-primary)', letterSpacing: 0.2,
-                }}>
-                  {urlDishes.length} dishes
-                </h2>
-                <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0, lineHeight: 1.4 }}>
-                  {selectedUrlCount > 0
-                    ? `${selectedUrlCount} selected`
-                    : 'Tap ✓ to rate one, ✨ to save it for later'}
-                  {urlDishes.some((d) => d.duplicate) && (
-                    <>
-                      {' · '}
-                      {urlDishes.filter((d) => d.duplicate).length === 1
-                        ? '1 already saved'
-                        : `${urlDishes.filter((d) => d.duplicate).length} already saved`}
-                    </>
-                  )}
-                </p>
+                <button
+                  className="menu-rescan"
+                  onClick={handleAnalyzeUrl}
+                  disabled={urlLoading || !menuUrl.trim()}
+                >
+                  <RefreshCw size={12} /> Rescan
+                </button>
               </div>
 
               <ScannedDishList dishes={urlDishes} onUpdate={updateUrlDish} />

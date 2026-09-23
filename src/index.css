@@ -881,144 +881,200 @@ textarea.input {
   50% { box-shadow: 0 0 20px rgba(0, 212, 255, 0.8), 0 0 40px rgba(0, 212, 255, 0.4); }
 }
 
-/* ─── Imported menu list ─────────────────────────────────────────────────────
-   A scanned menu can run to 50+ dishes, so a row has to stay cheap vertically
-   and still read as a menu: courses as section rules, the dish name as the
-   loudest thing on the line, everything else earned by tapping. Fills on the
-   accent use a literal white, since --white is a dark navy in the diner theme. */
-.menu-section {
+/* ─── Imported menu ──────────────────────────────────────────────────────────
+   A scanned menu is a long list, and a long list of individually bordered
+   cards reads as clutter. Rows share one surface per course, separated by
+   hairline rules — the list stays quiet so the dish names carry it. Fills on
+   the accent use a literal white, since --white is dark navy in the diner
+   theme. */
+.menu-head {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 20px 2px 9px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 2px 2px 20px;
 }
-.menu-section:first-child { margin-top: 14px; }
-.menu-section-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-  white-space: nowrap;
+.menu-head-title {
+  font-family: 'Righteous', cursive;
+  font-size: 21px;
+  line-height: 1.15;
+  margin: 0 0 3px;
+  color: var(--text-primary);
 }
-.menu-section-rule {
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-.menu-section-count {
-  font-size: 11px;
-  font-weight: 600;
+.menu-head-sub {
+  font-size: 12.5px;
+  line-height: 1.4;
   color: var(--text-muted);
+  margin: 0;
+}
+.menu-rescan {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  margin-top: 3px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.menu-course { margin-bottom: 22px; }
+.menu-course:last-child { margin-bottom: 4px; }
+.menu-course-label {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0 0 8px 2px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.menu-course-count {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.65;
   font-variant-numeric: tabular-nums;
 }
 
-.menu-row {
+/* One surface per course; rows are divided, not boxed. */
+.menu-group {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  margin-bottom: 7px;
+  border-radius: 12px;
   overflow: hidden;
-  transition: border-color 0.18s, box-shadow 0.18s;
 }
-.menu-row.selected {
-  border-color: var(--accent);
-  box-shadow: 0 3px 14px var(--shadow);
-}
-.menu-row-head {
+.menu-item + .menu-item { border-top: 1px solid var(--border); }
+.menu-item.selected { background: var(--bg-secondary); }
+
+.menu-item-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px 10px 14px;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 14px;
+  background: none;
+  border: none;
+  text-align: left;
 }
-.menu-row-name {
+.menu-item-name {
   flex: 1;
   min-width: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.menu-item.selected .menu-item-name { font-weight: 600; }
+
+/* Name editing is opt-in, so the row stays a row and not a form */
+.menu-item-rename {
+  width: 100%;
   font-family: inherit;
   /* 16px minimum: iOS zooms the page when a focused control is smaller */
   font-size: 16px;
   font-weight: 600;
-  line-height: 1.3;
   color: var(--text-primary);
-  background: transparent;
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+.menu-item-rename:focus { outline: none; }
+.menu-icon-btn {
+  flex-shrink: 0;
+  padding: 3px;
+  background: none;
   border: none;
-  border-bottom: 1.5px solid transparent;
-  padding: 1px 0;
-  border-radius: 0;
-}
-/* The same line rendered as text: wraps instead of scrolling a long name away */
-.menu-row-name.as-text {
-  display: block;
-  cursor: text;
-  overflow-wrap: anywhere;
-}
-.menu-row-name:focus {
-  outline: none;
-  border-bottom-color: var(--accent);
+  color: var(--text-muted);
+  line-height: 0;
 }
 
-/* Round action buttons — the only controls on an untouched row */
-.menu-act {
-  width: 36px;
-  height: 36px;
+.menu-tick {
+  width: 21px;
+  height: 21px;
   flex-shrink: 0;
   border-radius: 50%;
+  border: 1.5px solid var(--border);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
-  border: 1.5px solid var(--border);
-  color: var(--text-muted);
-  transition: all 0.18s;
+  color: transparent;
+  transition: background 0.16s, border-color 0.16s, color 0.16s;
 }
-.menu-act:active { transform: scale(0.92); }
-.menu-act.on {
+.menu-item.selected .menu-tick {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
 }
-.menu-act.on.want {
+.menu-item.selected.want .menu-tick {
   background: var(--palm-green);
   border-color: var(--palm-green);
 }
 
-/* Everything that only matters once a dish is going in */
-.menu-row-body {
-  padding: 0 14px 13px;
+.menu-item-body {
+  padding: 0 14px 14px;
   display: flex;
   flex-direction: column;
-  gap: 11px;
+  gap: 13px;
 }
-.menu-row-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 0 14px 12px;
+
+/* Rate vs want-to-try, once a dish is going in */
+.menu-seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.menu-seg button {
+  flex: 1;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: background 0.16s, color 0.16s;
+}
+.menu-seg button.on { background: var(--accent); color: #fff; }
+.menu-seg button.on.want { background: var(--palm-green); }
+
+.menu-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .menu-type-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  align-self: flex-start;
-  padding: 4px 10px;
+  padding: 5px 10px;
   border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
   border: 1px solid var(--border);
   color: var(--text-secondary);
-  transition: all 0.18s;
+  transition: border-color 0.16s, color 0.16s;
 }
-.menu-type-btn.open {
-  border-color: var(--accent);
-  color: var(--accent);
-}
+.menu-type-btn.open { border-color: var(--accent); color: var(--accent); }
+
 .menu-dup {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   font-size: 11px;
   font-weight: 500;
   color: var(--sunset-orange);
-  padding: 0 14px 9px;
-  margin-top: -4px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }

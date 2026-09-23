@@ -36,19 +36,20 @@ export function ScannedDishList({
   return (
     <div>
       {groups.map(({ type, entries }) => (
-        <section key={type.value}>
-          <header className="menu-section">
-            <span className="menu-section-label">{COURSE_HEADINGS[type.value]}</span>
-            <span className="menu-section-rule" />
-            <span className="menu-section-count">{entries.length}</span>
-          </header>
-          {entries.map(({ dish, index }) => (
-            <ScannedDishCard
-              key={index}
-              dish={dish}
-              onUpdate={(updates) => onUpdate(index, updates)}
-            />
-          ))}
+        <section className="menu-course" key={type.value}>
+          <h3 className="menu-course-label">
+            {COURSE_HEADINGS[type.value]}
+            <span className="menu-course-count">{entries.length}</span>
+          </h3>
+          <div className="menu-group">
+            {entries.map(({ dish, index }) => (
+              <ScannedDishCard
+                key={index}
+                dish={dish}
+                onUpdate={(updates) => onUpdate(index, updates)}
+              />
+            ))}
+          </div>
         </section>
       ))}
     </div>
