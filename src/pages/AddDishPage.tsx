@@ -4,7 +4,7 @@ import { ArrowLeft, Camera, Loader, X, Sparkles, ChevronLeft, ChevronRight, Refr
 import { useApp } from '../hooks/useAppContext';
 import { RatingSlider } from '../components/RatingSlider';
 import { ScrollBar } from '../components/ScrollBar';
-import { ScannedDishCard } from '../components/ScannedDishCard';
+import { ScannedDishList } from '../components/ScannedDishList';
 import type { ScannedDish } from '../components/ScannedDishCard';
 import { analyzeDishImage, analyzeMenuUrl, uploadPhoto, getRestaurantMenu, saveRestaurantMenu } from '../lib/api';
 import { resolveMenuUrl } from '../lib/menu';
@@ -108,7 +108,6 @@ export function AddDishPage() {
   // Set when the list on screen came from the saved menu rather than a fresh
   // scan, so we can label it and offer a rescan.
   const [menuScannedAt, setMenuScannedAt] = useState<string | null>(null);
-  const [urlTypeFilter, setUrlTypeFilter] = useState<DishType | 'all'>('all');
 
   // ─── Scan handlers ──────────────────────────────────────────────────────────
 
@@ -252,7 +251,7 @@ export function AddDishPage() {
     setUrlLoading(true);
     setUrlNote('');
     setMenuScannedAt(null);
-    setUrlTypeFilter('all');
+   
     try {
       // Fetch existing dishes and analyze URL in parallel
       const [result, existingDishes] = await Promise.all([
@@ -276,6 +275,8 @@ export function AddDishPage() {
   const updateUrlDish = (index: number, updates: Partial<ScannedDish>) => {
     setUrlDishes((prev) => prev.map((d, i) => (i === index ? { ...d, ...updates } : d)));
   };
+
+  const selectedUrlCount = urlDishes.filter((d) => d.action !== 'ignore').length;
 
   const handleSaveUrl = () => {
     if (!restaurantId) return;
@@ -674,13 +675,7 @@ export function AddDishPage() {
                 Tap an action for each dish you want to add.
               </p>
 
-              {scannedDishes.map((dish, i) => (
-                <ScannedDishCard
-                  key={i}
-                  dish={dish}
-                  onUpdate={(updates) => updateScannedDish(i, updates)}
-                />
-              ))}
+              <ScannedDishList dishes={scannedDishes} onUpdate={updateScannedDish} />
 
               <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
                 <button
@@ -716,8 +711,8 @@ export function AddDishPage() {
               <div style={{
                 width: 64, height: 64, margin: '0 auto 14px',
                 borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'linear-gradient(135deg, var(--hot-pink), var(--purple))',
-                boxShadow: '0 0 22px rgba(255, 20, 147, 0.28)',
+                background: 'linear-gradient(135deg, var(--accent), var(--accent-hover))',
+                boxShadow: '0 4px 18px var(--shadow)',
               }}>
                 <UtensilsCrossed size={28} color="var(--white)" />
               </div>
@@ -811,60 +806,35 @@ export function AddDishPage() {
                 </div>
               )}
 
-              <div style={{ marginBottom: 10 }}>
-                <h3 style={{ fontFamily: "'Righteous', cursive", fontSize: 16, margin: '0 0 2px' }}>
-                  {urlDishes.length} dishes on the menu
-                </h3>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
-                  Tap Rate or Want to Try on the ones you want
+              <div style={{ margin: '2px 2px 4px' }}>
+                <h2 style={{
+                  fontFamily: "'Righteous', cursive", fontSize: 20,
+                  margin: '0 0 3px', color: 'var(--text-primary)', letterSpacing: 0.2,
+                }}>
+                  {urlDishes.length} dishes
+                </h2>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0, lineHeight: 1.4 }}>
+                  {selectedUrlCount > 0
+                    ? `${selectedUrlCount} selected`
+                    : 'Tap ✓ to rate one, ✨ to save it for later'}
                   {urlDishes.some((d) => d.duplicate) && (
                     <>
                       {' · '}
                       {urlDishes.filter((d) => d.duplicate).length === 1
-                        ? '1 looks like a duplicate'
-                        : `${urlDishes.filter((d) => d.duplicate).length} look like duplicates`}
+                        ? '1 already saved'
+                        : `${urlDishes.filter((d) => d.duplicate).length} already saved`}
                     </>
                   )}
                 </p>
               </div>
 
-              {/* Filter the list by the type the analyzer assigned */}
-              <ScrollBar className="filter-bar" style={{ marginBottom: 12 }}>
-                <button
-                  className={`dish-type-pill ${urlTypeFilter === 'all' ? 'active' : ''}`}
-                  onClick={() => setUrlTypeFilter('all')}
-                  style={{ whiteSpace: 'nowrap', flexShrink: 0, fontSize: 12 }}
-                >
-                  All {urlDishes.length}
-                </button>
-                {DISH_TYPES.filter((t) => urlDishes.some((d) => d.dish_type === t.value)).map((type) => (
-                  <button
-                    key={type.value}
-                    className={`dish-type-pill ${urlTypeFilter === type.value ? 'active' : ''}`}
-                    onClick={() => setUrlTypeFilter(type.value)}
-                    style={{ whiteSpace: 'nowrap', flexShrink: 0, fontSize: 12 }}
-                  >
-                    {type.label} {urlDishes.filter((d) => d.dish_type === type.value).length}
-                  </button>
-                ))}
-              </ScrollBar>
-
-              {urlDishes
-                .map((dish, i) => ({ dish, i }))
-                .filter(({ dish }) => urlTypeFilter === 'all' || dish.dish_type === urlTypeFilter)
-                .map(({ dish, i }) => (
-                  <ScannedDishCard
-                    key={i}
-                    dish={dish}
-                    onUpdate={(updates) => updateUrlDish(i, updates)}
-                  />
-                ))}
+              <ScannedDishList dishes={urlDishes} onUpdate={updateUrlDish} />
 
               <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
                 <button
                   className="btn btn-secondary"
                   style={{ flex: 1 }}
-                  onClick={() => { setUrlDishes([]); setMenuUrl(''); setUrlNote(''); setMenuScannedAt(null); setUrlTypeFilter('all'); }}
+                  onClick={() => { setUrlDishes([]); setMenuUrl(''); setUrlNote(''); setMenuScannedAt(null); }}
                 >
                   Clear
                 </button>

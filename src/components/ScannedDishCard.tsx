@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { Check, Sparkles, AlertCircle, Tag, ChevronDown } from 'lucide-react';
+import { Check, Sparkles, AlertCircle, ChevronDown } from 'lucide-react';
 import { RatingSlider } from './RatingSlider';
-import { ScrollBar } from './ScrollBar';
 import { DISH_TYPES, getRatingLabel, getRatingColor } from '../types';
 
 // A dish pulled off a menu or a photo, awaiting the user's verdict.
@@ -14,10 +13,15 @@ export interface ScannedDish {
   duplicate?: string; // name of a similar existing dish
 }
 
-// ─── Shared dish card for the Menu + Scan tabs ───────────────────────────────
+// One line of an imported menu.
+//
 // Declared at module scope on purpose: nesting it inside AddDishPage made React
-// treat it as a new component type on every parent render, remounting each card
+// treat it as a new component type on every parent render, remounting every row
 // and pulling focus out of the name field after a single keystroke.
+//
+// An untouched row is just the dish name and two round buttons — a 50-dish menu
+// has to stay scannable. Rating, notes and the type correction only appear once
+// the dish is actually going in.
 export function ScannedDishCard({
   dish,
   onUpdate,
@@ -26,121 +30,121 @@ export function ScannedDishCard({
   onUpdate: (updates: Partial<ScannedDish>) => void;
 }) {
   const [typeOpen, setTypeOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const selected = dish.action !== 'ignore';
   const typeLabel = DISH_TYPES.find((t) => t.value === dish.dish_type)?.label;
 
+  const toggle = (action: 'rate' | 'want_to_try') =>
+    onUpdate({ action: dish.action === action ? 'ignore' : action });
+
   return (
-    <div
-      className="card"
-      style={{
-        padding: 14,
-        marginBottom: 10,
-        border: selected ? '2px solid var(--hot-pink)' : '2px solid var(--border)',
-        opacity: selected ? 1 : 0.62,
-        transition: 'all 0.2s',
-      }}
-    >
-      {/* Duplicate warning */}
-      {dish.duplicate && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 5,
-          fontSize: 11, color: 'var(--coral)',
-          background: 'rgba(255,100,60,0.08)', borderRadius: 6,
-          padding: '4px 8px', marginBottom: 8,
-        }}>
-          <AlertCircle size={12} style={{ flexShrink: 0 }} />
-          Similar to &ldquo;{dish.duplicate}&rdquo; already in your list
-        </div>
-      )}
-
-      {/* Dish name — editable */}
-      <input
-        className="input"
-        value={dish.name}
-        onChange={(e) => onUpdate({ name: e.target.value })}
-        style={{ fontFamily: "'Righteous', cursive", fontSize: 15, marginBottom: 8, padding: '6px 10px' }}
-      />
-
-      {/* Dish type — the analyzer's guess, one tap to correct */}
-      <button
-        onClick={() => setTypeOpen((open) => !open)}
-        className={`chip ${typeOpen ? 'active' : ''}`}
-        style={{ marginBottom: typeOpen ? 8 : 0, fontSize: 12, padding: '3px 10px' }}
-      >
-        <Tag size={11} />
-        {typeLabel ?? 'Pick a type'}
-        <ChevronDown
-          size={11}
-          style={{ transform: typeOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
-        />
-      </button>
-      {typeOpen && (
-        <ScrollBar className="filter-bar" style={{ marginBottom: 10 }}>
-          {DISH_TYPES.map((type) => (
-            <button
-              key={type.value}
-              className={`dish-type-pill ${dish.dish_type === type.value ? 'active' : ''}`}
-              onClick={() => { onUpdate({ dish_type: type.value }); setTypeOpen(false); }}
-              style={{ whiteSpace: 'nowrap', flexShrink: 0, fontSize: 12, padding: '5px 13px' }}
-            >
-              {type.label}
-            </button>
-          ))}
-        </ScrollBar>
-      )}
-
-      {/* Action buttons */}
-      <div style={{ display: 'flex', gap: 6, marginTop: 10, marginBottom: selected ? 10 : 0 }}>
+    <div className={`menu-row ${selected ? 'selected' : ''}`}>
+      <div className="menu-row-head">
+        {/* Plain text until tapped: menu names run long, and an <input> would
+            silently scroll the tail of "North African Carrot Salad" out of view. */}
+        {editing ? (
+          <input
+            className="menu-row-name"
+            value={dish.name}
+            aria-label="Dish name"
+            autoFocus
+            onChange={(e) => onUpdate({ name: e.target.value })}
+            onBlur={() => setEditing(false)}
+            onKeyDown={(e) => { if (e.key === 'Enter') setEditing(false); }}
+          />
+        ) : (
+          <span
+            className="menu-row-name as-text"
+            role="button"
+            tabIndex={0}
+            onClick={() => setEditing(true)}
+            onKeyDown={(e) => { if (e.key === 'Enter') setEditing(true); }}
+          >
+            {dish.name}
+          </span>
+        )}
         <button
-          className={`chip ${dish.action === 'rate' ? 'active' : ''}`}
-          onClick={() => onUpdate({ action: dish.action === 'rate' ? 'ignore' : 'rate' })}
-          style={{ flex: 1, justifyContent: 'center' }}
+          className={`menu-act ${dish.action === 'rate' ? 'on' : ''}`}
+          onClick={() => toggle('rate')}
+          aria-pressed={dish.action === 'rate'}
+          aria-label={`Rate ${dish.name}`}
         >
-          <Check size={12} />
-          Rate
+          <Check size={17} strokeWidth={2.5} />
         </button>
         <button
-          className={`chip ${dish.action === 'want_to_try' ? 'active' : ''}`}
-          onClick={() => onUpdate({ action: dish.action === 'want_to_try' ? 'ignore' : 'want_to_try' })}
-          style={{ flex: 1, justifyContent: 'center' }}
+          className={`menu-act want ${dish.action === 'want_to_try' ? 'on' : ''}`}
+          onClick={() => toggle('want_to_try')}
+          aria-pressed={dish.action === 'want_to_try'}
+          aria-label={`Add ${dish.name} to want to try`}
         >
-          <Sparkles size={12} />
-          Want to Try
+          <Sparkles size={16} strokeWidth={2.5} />
         </button>
       </div>
 
-      {/* Rating with numeric display */}
-      {dish.action === 'rate' && (
-        <>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
-            <span style={{
-              fontFamily: "'Righteous', cursive",
-              fontSize: 13,
-              color: getRatingColor(dish.rating),
-              background: `${getRatingColor(dish.rating)}18`,
-              padding: '2px 12px',
-              borderRadius: 12,
-              border: `1.5px solid ${getRatingColor(dish.rating)}40`,
-              textTransform: 'uppercase',
-              letterSpacing: 0.5,
-            }}>
-              {getRatingLabel(dish.rating)} &middot; {dish.rating.toFixed(1)}/10
-            </span>
-          </div>
-          <RatingSlider value={dish.rating} onChange={(val) => onUpdate({ rating: val })} />
-        </>
+      {dish.duplicate && (
+        <div className="menu-dup">
+          <AlertCircle size={11} style={{ flexShrink: 0 }} />
+          Already saved as &ldquo;{dish.duplicate}&rdquo;
+        </div>
       )}
 
-      {/* Notes — only once the dish is actually going in */}
       {selected && (
-        <textarea
-          className="input"
-          placeholder="Add notes (optional)"
-          value={dish.notes}
-          onChange={(e) => onUpdate({ notes: e.target.value })}
-          rows={2}
-          style={{ marginTop: 10, fontSize: 13, resize: 'none' }}
-        />
+        <>
+          <div className="menu-row-divider" />
+          <div className="menu-row-body">
+            {dish.action === 'rate' && (
+              <div>
+                <div style={{ textAlign: 'center', marginBottom: 4 }}>
+                  <span style={{
+                    fontFamily: "'Righteous', cursive",
+                    fontSize: 12,
+                    letterSpacing: 0.5,
+                    textTransform: 'uppercase',
+                    color: getRatingColor(dish.rating),
+                  }}>
+                    {getRatingLabel(dish.rating)} &middot; {dish.rating.toFixed(1)}
+                  </span>
+                </div>
+                <RatingSlider value={dish.rating} onChange={(val) => onUpdate({ rating: val })} />
+              </div>
+            )}
+
+            {/* The analyzer's guess, and the way to correct it */}
+            <button
+              className={`menu-type-btn ${typeOpen ? 'open' : ''}`}
+              onClick={() => setTypeOpen((open) => !open)}
+            >
+              {typeLabel ?? 'Pick a type'}
+              <ChevronDown
+                size={12}
+                style={{ transform: typeOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
+              />
+            </button>
+            {typeOpen && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: -4 }}>
+                {DISH_TYPES.map((type) => (
+                  <button
+                    key={type.value}
+                    className={`dish-type-pill ${dish.dish_type === type.value ? 'active' : ''}`}
+                    onClick={() => { onUpdate({ dish_type: type.value }); setTypeOpen(false); }}
+                    style={{ fontSize: 12, padding: '5px 12px' }}
+                  >
+                    {type.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <textarea
+              className="input"
+              placeholder="Notes (optional)"
+              value={dish.notes}
+              onChange={(e) => onUpdate({ notes: e.target.value })}
+              rows={2}
+              style={{ fontSize: 14, resize: 'none', padding: '9px 12px' }}
+            />
+          </div>
+        </>
       )}
     </div>
   );
