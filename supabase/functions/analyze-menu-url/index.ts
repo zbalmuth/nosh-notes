@@ -440,9 +440,22 @@ The page content could not be fetched. Based on your knowledge of this restauran
     // listed in the provided content") tells the person nothing they can act
     // on, so say what to try instead.
     if (!parsed.dishes?.length) {
-      parsed.note = source
-        ? "We couldn't find a menu on that page. Try pasting a link straight to the menu, or use Scan to photograph it."
-        : "We couldn't open that page. Try another link, or use Scan to photograph the menu.";
+      // A page that ships a lot of markup and almost no text builds its
+      // content in the browser — Squarespace code blocks, DoorDash
+      // storefronts. There is no menu in the response to find, so saying
+      // "try a link straight to the menu" just sends people round again.
+      // Measured against this user's own restaurants: pages that render their
+      // menu client-side strip down to ~700 characters of navigation from
+      // 30-350 KB of markup, while pages we can actually read start around
+      // 1,000. It only picks the wording of a failure, so the margin is cheap.
+      const clientRendered = source?.kind === 'html' && source.html.length > 20000 && pageText.length < 900;
+      if (!source) {
+        parsed.note = "We couldn't open that page. Try another link, or use Scan to photograph the menu.";
+      } else if (clientRendered) {
+        parsed.note = 'This site builds its menu in the browser, so there is nothing for us to read. Scan works best here.';
+      } else {
+        parsed.note = "We couldn't find a menu on that page. Try pasting a link straight to the menu, or use Scan to photograph it.";
+      }
     }
 
     return new Response(
