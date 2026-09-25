@@ -38,10 +38,17 @@ function setLocationPref(pref: 'granted' | 'denied') {
 }
 
 // Reverse-geocode coordinates to a human-readable city/state.
+//
+// Capped: this is a courtesy label on a third-party service that rate-limits
+// anonymous callers, and every caller is holding a position fix hostage while
+// it runs. If it's slow, the coordinates are still perfectly good without it.
+const REVERSE_GEOCODE_TIMEOUT_MS = 2500;
+
 async function reverseGeocode(lat: number, lng: number): Promise<{ city: string; state: string }> {
   try {
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+      { signal: AbortSignal.timeout(REVERSE_GEOCODE_TIMEOUT_MS) },
     );
     const data = await res.json();
     return {

@@ -171,6 +171,24 @@ export async function searchDishes(query: string): Promise<Dish[]> {
 }
 
 // ─── Search (via Edge Function proxy) ───────────────────────────────────────
+// The edge function answers 200 with an empty list and a `warning` when it
+// can't search — an unconfigured provider key, a Google error. Dropping that
+// string made every such failure look identical to "nothing matched", so it
+// is available to callers that want to say why.
+export async function searchRestaurantsDetailed(
+  query: string,
+  provider: SearchProvider,
+  location?: string,
+  latitude?: number,
+  longitude?: number
+): Promise<{ results: SearchResult[]; warning?: string }> {
+  const { data, error } = await supabase.functions.invoke('search-restaurants', {
+    body: { query, provider, location, latitude, longitude },
+  });
+  if (error) throw new Error(`Search request failed: ${error.message}`);
+  return { results: data?.results || [], warning: data?.warning };
+}
+
 export async function searchRestaurants(
   query: string,
   provider: SearchProvider,
@@ -178,11 +196,8 @@ export async function searchRestaurants(
   latitude?: number,
   longitude?: number
 ): Promise<SearchResult[]> {
-  const { data, error } = await supabase.functions.invoke('search-restaurants', {
-    body: { query, provider, location, latitude, longitude },
-  });
-  if (error) throw new Error(`Search request failed: ${error.message}`);
-  return data?.results || [];
+  const { results } = await searchRestaurantsDetailed(query, provider, location, latitude, longitude);
+  return results;
 }
 
 // ─── Place details: photos + hours, fetched lazily for one result ───────────

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, MapPin, X, Loader, Plus, UtensilsCrossed } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
-import { searchRestaurants, searchDishes } from '../lib/api';
+import { searchRestaurantsDetailed, searchDishes } from '../lib/api';
 import type { SearchResult, SearchProvider, Dish } from '../types';
 import { getRatingColor } from '../types';
 import { detectLocation, getLocationPref } from '../lib/location';
@@ -35,6 +35,7 @@ export function SearchPage() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
+  const promptedRef = useRef(false);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -62,6 +63,8 @@ export function SearchPage() {
   const promptForLocation = useCallback(async () => {
     if (latitude != null && longitude != null) return;
     if (getLocationPref() === 'denied') return;
+    if (promptedRef.current) return; // one dialog per visit, not one per keystroke
+    promptedRef.current = true;
     // blur() only starts the keyboard's dismiss animation. Wait for it to
     // finish before prompting — an alert raised while the keyboard is still
     // on screen is laid out in the space above it and, being a tall alert
@@ -74,6 +77,24 @@ export function SearchPage() {
     setLongitude(loc.lng);
     if (loc.city) setLocationLabel(loc.city);
   }, [latitude, longitude]);
+
+  // Where this person actually eats, by weight of their own collection. Used
+  // when there's no GPS fix yet — or ever, if location was declined. Without
+  // it a bare query goes to Google unanchored and comes back with pizzerias
+  // in Omaha, which reads as "it can't find anything".
+  const homeCity = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of restaurants) {
+      const city = r.city?.trim();
+      if (city) counts.set(city, (counts.get(city) ?? 0) + 1);
+    }
+    let best = '';
+    let bestCount = 0;
+    for (const [city, count] of counts) {
+      if (count > bestCount) { best = city; bestCount = count; }
+    }
+    return best;
+  }, [restaurants]);
 
   // Real-time collection filter
   const collectionResults = useMemo(() => {
@@ -95,10 +116,15 @@ export function SearchPage() {
       setDiscoverError('');
       return;
     }
-    debounceRef.current = setTimeout(async () => {
-      // A nearby search is about to run — ask for location now if we still
-      // need it. Awaited so the first search already carries the fix.
-      await promptForLocation();
+    debounceRef.current = setTimeout(() => {
+      // Ask for a location fix if we still need one, but never make the search
+      // wait on it. Awaiting this cost seconds before the first request even
+      // left the device: a 400 ms keyboard settle, then CoreLocation (a 10 s
+      // timeout, plus the permission dialog on a first run), then a
+      // reverse-geocode round trip. Results looked broken because nothing was
+      // in flight yet. It runs alongside instead, and when a fix lands it
+      // changes latitude/longitude, which re-runs this effect with it.
+      void promptForLocation();
 
       // Dish search
       setSearchingDishes(true);
@@ -110,9 +136,13 @@ export function SearchPage() {
       // External discover
       setDiscovering(true);
       setDiscoverError('');
-      const loc = customLocation || locationLabel || undefined;
-      searchRestaurants(query, provider, loc, latitude, longitude)
-        .then(setDiscoverResults)
+      const loc = customLocation || locationLabel || homeCity || undefined;
+      searchRestaurantsDetailed(query, provider, loc, latitude, longitude)
+        .then(({ results, warning }) => {
+          setDiscoverResults(results);
+          // Say why nothing came back, rather than showing a bare empty list.
+          setDiscoverError(results.length === 0 && warning ? warning : '');
+        })
         .catch(() => {
           setDiscoverError('Nearby search unavailable right now');
           setDiscoverResults([]);
@@ -120,7 +150,7 @@ export function SearchPage() {
         .finally(() => setDiscovering(false));
     }, 700);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query, provider, locationLabel, customLocation, latitude, longitude, promptForLocation]);
+  }, [query, provider, locationLabel, customLocation, homeCity, latitude, longitude, promptForLocation]);
 
   const clearQuery = () => {
     setQuery('');
