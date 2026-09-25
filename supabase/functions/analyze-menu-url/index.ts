@@ -33,6 +33,11 @@ const MAX_MENU_LINKS_FOLLOWED = 3;
 // Read a few and let the model see them together.
 const MAX_EMBEDDED_MENUS = 3;
 
+// A restaurant site that never finishes responding would otherwise hold the
+// whole request open — one took 136 s in a sweep of this user's list. Every
+// hop gets its own budget; a slow page is simply not worth waiting for.
+const FETCH_TIMEOUT_MS = 12000;
+
 // Drive renders a page image for any file it will show in a viewer, including
 // ones whose owner has turned downloading off — which is most restaurant menus
 // shared this way. `uc?export=download` answers "Can't download file" for those;
@@ -152,6 +157,7 @@ async function loadSource(url: string): Promise<Source | null> {
         'Accept': 'text/html,application/xhtml+xml,application/xml,application/pdf,image/*;q=0.9,*/*;q=0.8',
       },
       redirect: 'follow',
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
   } catch {
     return null;
