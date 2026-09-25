@@ -29,6 +29,44 @@ const MAX_FETCH_BYTES = 10 * 1024 * 1024; // 10 MB cap on fetched content
 // candidate first, before giving up.
 const MAX_MENU_LINKS_FOLLOWED = 3;
 
+// A menu split across several embedded files (dinner, wine, dessert) is normal.
+// Read a few and let the model see them together.
+const MAX_EMBEDDED_MENUS = 3;
+
+// Drive renders a page image for any file it will show in a viewer, including
+// ones whose owner has turned downloading off — which is most restaurant menus
+// shared this way. `uc?export=download` answers "Can't download file" for those;
+// this answers with a PNG that vision can read.
+function driveThumbnailUrl(url: string): string | null {
+  const id = url.match(
+    /(?:drive|docs)\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:[^#]*&)?id=)([A-Za-z0-9_-]{16,})/,
+  )?.[1];
+  return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1600` : null;
+}
+
+// Menus that a page embeds rather than writes into itself: a Drive PDF in an
+// iframe, a linked PDF, a photographed menu. This is how a site can look empty
+// to a fetcher and perfectly normal in a browser.
+function findEmbeddedMenuUrls(html: string, baseUrl: string): string[] {
+  const found: string[] = [];
+  for (const [, rawSrc] of html.matchAll(/<iframe\b[^>]*?\ssrc\s*=\s*["']([^"']+)["']/gi)) {
+    let resolved: string;
+    try {
+      resolved = new URL(rawSrc, baseUrl).toString();
+    } catch {
+      continue;
+    }
+    if (!isAllowedUrl(resolved)) continue;
+    // Reservations, video and maps are iframed just as often as menus are.
+    if (/youtube|youtu\.be|vimeo|\/maps|instagram|facebook|opentable|resy\.com|exploretock|yelp/i.test(resolved)) continue;
+
+    const drive = driveThumbnailUrl(resolved);
+    if (drive) { found.push(drive); continue; }
+    if (/\.(pdf|png|jpe?g|webp)(\?|#|$)/i.test(resolved)) found.push(resolved);
+  }
+  return [...new Set(found)].slice(0, MAX_EMBEDDED_MENUS);
+}
+
 // Returns true if the dotted-decimal IPv4 string falls in a private/reserved range.
 function isPrivateDottedIp(ip: string): boolean {
   return (
@@ -239,23 +277,43 @@ function findMenuLinks(html: string, baseUrl: string): string[] {
 // Given whatever the user's URL turned out to be, return the thing most worth
 // showing the model. For an HTML page that isn't itself a menu, that usually
 // means following one of its menu links.
-async function resolveBestSource(source: Source): Promise<Source> {
-  if (source.kind !== 'html') return source;
+// Returns everything worth showing the model — usually one thing, but a menu
+// embedded as several files comes back as several.
+async function resolveBestSources(source: Source): Promise<Source[]> {
+  if (source.kind !== 'html') return [source];
 
   const ownText = stripHtml(source.html);
   const ownScore = menuScore(ownText);
-  // A page already sitting at /menu with prices on it needs no further hops.
-  if (isMenuish(new URL(source.url).pathname) && ownScore > 0) return source;
+  // A page already sitting at /menu with real menu text on it needs no hops.
+  if (isMenuish(new URL(source.url).pathname) && ownScore > 0 && ownText.length >= 900) return [source];
+
+  // Embedded files first: a page that embeds its menu usually has nothing in
+  // its own markup, so following its links would only find more of the same.
+  const embedded = await loadEmbeddedMenus(source.html, source.url);
+  if (embedded.length) return embedded;
 
   for (const link of findMenuLinks(source.html, source.url)) {
     const candidate = await loadSource(link);
     if (!candidate) continue;
     // A linked PDF or image menu beats any amount of homepage prose.
-    if (candidate.kind !== 'html') return candidate;
-    if (menuScore(stripHtml(candidate.html)) > ownScore) return candidate;
+    if (candidate.kind !== 'html') return [candidate];
+    // The menu page reached from a homepage is frequently itself just a shell
+    // around embedded files, so it has to be opened the same way.
+    const nested = await loadEmbeddedMenus(candidate.html, candidate.url);
+    if (nested.length) return nested;
+    if (menuScore(stripHtml(candidate.html)) > ownScore) return [candidate];
   }
 
-  return source;
+  return [source];
+}
+
+async function loadEmbeddedMenus(html: string, baseUrl: string): Promise<Source[]> {
+  const loaded: Source[] = [];
+  for (const embedUrl of findEmbeddedMenuUrls(html, baseUrl)) {
+    const source = await loadSource(embedUrl);
+    if (source && source.kind !== 'html') loaded.push(source);
+  }
+  return loaded;
 }
 
 async function requireAuth(req: Request): Promise<Response | null> {
@@ -305,22 +363,30 @@ serve(async (req) => {
     // Fetch the URL, then follow it to the real menu when it turns out to be a
     // homepage that merely links to one.
     const fetched = await loadSource(url);
-    const source = fetched ? await resolveBestSource(fetched) : null;
+    const sources = fetched ? await resolveBestSources(fetched) : [];
+    const source = sources[0] ?? null;
+    const imageSources = sources.filter((s): s is Extract<Source, { kind: 'image' }> => s.kind === 'image');
     const pageText = source?.kind === 'html' ? stripHtml(source.html) : '';
 
     let messages: unknown[];
     let openaiFileId: string | null = null;
 
-    if (source?.kind === 'image') {
-      // --- IMAGE MENU: Send directly to GPT-4o vision ---
-      const base64 = base64Encode(new Uint8Array(source.bytes));
+    if (imageSources.length > 0) {
+      // --- IMAGE MENU(S): Send to GPT-4o vision. Several pages of one menu
+      // go in the same message so the model reads them as a single menu.
+      const intro = imageSources.length > 1
+        ? `These ${imageSources.length} images are pages of one restaurant's menu. Extract all the dishes and drinks across all of them.`
+        : 'This is a photo/image of a restaurant menu. Extract all the dishes and drinks.';
       messages = [
         { role: 'system', content: SYSTEM_PROMPT },
         {
           role: 'user',
           content: [
-            { type: 'text', text: 'This is a photo/image of a restaurant menu. Extract all the dishes and drinks.' },
-            { type: 'image_url', image_url: { url: `data:${source.mime};base64,${base64}` } },
+            { type: 'text', text: intro },
+            ...imageSources.map((img) => ({
+              type: 'image_url',
+              image_url: { url: `data:${img.mime};base64,${base64Encode(new Uint8Array(img.bytes))}` },
+            })),
           ],
         },
       ];
