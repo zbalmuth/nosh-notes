@@ -31,6 +31,46 @@ async function requireAuth(req: Request): Promise<Response | null> {
   return null;
 }
 
+// Google's photo endpoint redirects to a signed googleusercontent URL that stops
+// loading after a while, so restaurants saved with it lose their picture. Keep our
+// own copy in Storage, keyed by place_id so each place is downloaded once.
+const PHOTO_BUCKET = 'restaurant-photos';
+
+async function storePlacePhoto(placeId: string, photoRef: string, apiKey: string): Promise<string> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const path = `places/${encodeURIComponent(placeId)}.jpg`;
+  const publicUrl = `${supabaseUrl}/storage/v1/object/public/${PHOTO_BUCKET}/${path}`;
+  let googleUrl = '';
+  try {
+    const existing = await fetch(publicUrl, { method: 'HEAD' });
+    if (existing.ok) return publicUrl;
+
+    const photoRes = await fetch(
+      `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=${photoRef}&key=${apiKey}`
+    );
+    googleUrl = photoRes.url;
+    const contentType = photoRes.headers.get('content-type') ?? '';
+    if (!photoRes.ok || !contentType.startsWith('image/') || !serviceKey) {
+      await photoRes.body?.cancel();
+      return googleUrl;
+    }
+    const upload = await fetch(`${supabaseUrl}/storage/v1/object/${PHOTO_BUCKET}/${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': contentType, 'x-upsert': 'true' },
+      body: await photoRes.arrayBuffer(),
+    });
+    if (!upload.ok) {
+      console.error('photo upload failed:', upload.status, await upload.text());
+      return googleUrl;
+    }
+    return publicUrl;
+  } catch (e) {
+    console.error('storePlacePhoto failed:', e instanceof Error ? e.message : e);
+    return googleUrl;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -159,16 +199,7 @@ async function searchGoogle(query: string, location?: string, latitude?: number,
       } catch { /* use basic info */ }
 
       const photoRef = place.photos?.[0]?.photo_reference;
-      let imageUrl = '';
-      if (photoRef) {
-        try {
-          // Follow Google's redirect to get the actual CDN URL — no API key exposed, browser-loadable
-          const photoRes = await fetch(
-            `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoRef}&key=${apiKey}`
-          );
-          imageUrl = photoRes.url;
-        } catch { /* ignore */ }
-      }
+      const imageUrl = photoRef ? await storePlacePhoto(place.place_id, photoRef, apiKey) : '';
 
       // Extract city and state from address_components
       let city = '';
