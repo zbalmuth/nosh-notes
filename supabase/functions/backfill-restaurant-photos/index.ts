@@ -1,6 +1,6 @@
 // One-off: copy every restaurant photo into Storage so it stops expiring.
 // Deploy: supabase functions deploy backfill-restaurant-photos --no-verify-jwt
-// Call with header `x-backfill-key: <service role key>` and body {"dry": false};
+// Set secret BACKFILL_KEY, call with header `x-backfill-key: <BACKFILL_KEY>` and body {"dry": false};
 // {"dry": true} only reports which stored links no longer load. Delete it afterwards.
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
@@ -27,7 +27,8 @@ serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
   const apiKey = Deno.env.get('GOOGLE_PLACES_API_KEY') ?? '';
-  if (!serviceKey || req.headers.get('x-backfill-key') !== serviceKey) {
+  const backfillKey = Deno.env.get('BACKFILL_KEY') ?? '';
+  if (!serviceKey || !backfillKey || req.headers.get('x-backfill-key') !== backfillKey) {
     return new Response('Unauthorized', { status: 401 });
   }
   const { dry = true } = await req.json().catch(() => ({}));
