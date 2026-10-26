@@ -19,6 +19,7 @@ import { useApp } from '../hooks/useAppContext';
 import { RestaurantCard } from '../components/RestaurantCard';
 import { AlphabetIndex } from '../components/AlphabetIndex';
 import { indexLetter } from '../lib/alphabet';
+import { usePersistentState } from '../hooks/usePersistentState';
 
 const FILTERS_KEY = 'nosh-notes-filters';
 
@@ -57,8 +58,10 @@ export function HomePage() {
   } = useApp();
 
   const saved = loadSavedFilters();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showSearch, setShowSearch] = useState(searchParams.get('search') === 'true');
+  // Always on screen (it used to hide behind an icon), and kept when you open
+  // a restaurant and come back.
+  const [searchQuery, setSearchQuery] = usePersistentState('home:query', '');
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [selectedList, setSelectedList] = useState<string>(saved.selectedList || 'all');
   const [selectedCity, setSelectedCity] = useState<string>(saved.selectedCity || 'all');
   const [selectedCuisine, setSelectedCuisine] = useState<string>(saved.selectedCuisine || 'all');
@@ -89,7 +92,7 @@ export function HomePage() {
   // React to search param changes (e.g. clicking Search in bottom nav while already on /)
   useEffect(() => {
     if (searchParams.get('search') === 'true') {
-      setShowSearch(true);
+      searchInputRef.current?.focus();
     }
   }, [searchParams]);
 
@@ -458,36 +461,31 @@ export function HomePage() {
         >
           <CheckSquare size={20} />
         </button>
-        <button
-          onClick={() => setShowSearch(!showSearch)}
-          style={{ background: 'none', border: 'none', color: 'var(--hot-pink)' }}
-        >
-          {showSearch ? <X size={22} /> : <Search size={22} />}
-        </button>
       </div>
 
       {/* Search */}
-      {showSearch && (
-        <div style={{ padding: '12px 0' }}>
-          <div className="search-bar">
-            <Search size={18} color="var(--text-muted)" />
-            <input
-              placeholder="Search restaurants, cities, dishes..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)' }}
-              >
-                <X size={16} />
-              </button>
-            )}
-          </div>
+      <div style={{ padding: '12px 0 0' }}>
+        <div className="search-bar">
+          <Search size={18} color="var(--text-muted)" />
+          <input
+            ref={searchInputRef}
+            placeholder="Search your restaurants..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            enterKeyHint="search"
+            inputMode="search"
+            onKeyDown={(e) => { if (e.key === 'Enter') searchInputRef.current?.blur(); }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)' }}
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Filters */}
       <div style={{ padding: '8px 20px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', rowGap: 8 }}>
