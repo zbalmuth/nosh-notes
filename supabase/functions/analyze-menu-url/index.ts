@@ -387,6 +387,74 @@ async function requireAuth(req: Request): Promise<Response | null> {
   return null;
 }
 
+// Fewer dishes than this from the site itself and we also look the menu up on
+// the web. Restaurant sites that keep their menu out of reach (ordering
+// widgets, script-built pages, photos) are common; menu listings on Yelp,
+// DoorDash and the like usually have it in full.
+const WEB_SEARCH_BELOW = 15;
+
+// Which of the caller's restaurants this link belongs to. Runs as the caller,
+// so row-level security limits it to their own restaurants.
+async function findRestaurant(authHeader: string, url: string): Promise<{ name: string; city: string; state: string; address: string } | null> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const headers = { Authorization: authHeader, apikey: Deno.env.get('SUPABASE_ANON_KEY') ?? '' };
+  for (const column of ['website', 'menu_url']) {
+    try {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/restaurants?select=name,city,state,address&${column}=eq.${encodeURIComponent(url)}&limit=1`,
+        { headers },
+      );
+      const rows = res.ok ? await res.json() : [];
+      if (rows[0]?.name) return rows[0];
+    } catch {
+      // the lookup only enables the web search; carry on without it
+    }
+  }
+  return null;
+}
+
+// Ask a search-enabled model for the restaurant's menu as it's listed around
+// the web. Returns [] on any failure — it only ever adds to what the site gave.
+async function searchMenuOnWeb(
+  apiKey: string,
+  restaurant: { name: string; city: string; state: string; address: string },
+  url: string,
+): Promise<{ name: string; dish_type: string }[]> {
+  const where = [restaurant.address, restaurant.city, restaurant.state].filter(Boolean).join(', ');
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4o-search-preview',
+        web_search_options: {},
+        max_tokens: 16000,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: `Find the full current menu of the restaurant "${restaurant.name}"${where ? ` at ${where}` : ''} (website: ${url}). Search its own site and menu listings such as Yelp, DoorDash, Uber Eats, Grubhub, Allmenus and MenuPages. Make sure it is this exact location, not another restaurant with a similar name. List every dish and drink on the menu. Respond with the JSON object only.`,
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(90000),
+    });
+    if (!res.ok) {
+      console.log(JSON.stringify({ web_search_error: res.status, body: (await res.text()).slice(0, 300) }));
+      return [];
+    }
+    const data = await res.json();
+    const content: string = data.choices?.[0]?.message?.content ?? '';
+    // No JSON mode on search models: take the outermost object in the reply.
+    const json = content.slice(content.indexOf('{'), content.lastIndexOf('}') + 1);
+    const dishes = JSON.parse(json).dishes;
+    return Array.isArray(dishes) ? dishes.filter((d) => typeof d?.name === 'string') : [];
+  } catch (err) {
+    console.log(JSON.stringify({ web_search_error: String(err) }));
+    return [];
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -544,6 +612,20 @@ The page content could not be fetched. Based on your knowledge of this restauran
       parsed = JSON.parse(jsonStr);
     } catch {
       parsed = { dishes: [], note: 'Failed to parse AI response' };
+    }
+    if (!Array.isArray(parsed.dishes)) parsed.dishes = [];
+
+    // The site gave little or nothing: look the menu up on the web as well.
+    if (parsed.dishes.length < WEB_SEARCH_BELOW) {
+      const restaurant = await findRestaurant(req.headers.get('Authorization') ?? '', url);
+      if (restaurant) {
+        const fromWeb = await searchMenuOnWeb(apiKey, restaurant, url);
+        console.log(JSON.stringify({ web_search: restaurant.name, site_dishes: parsed.dishes.length, web_dishes: fromWeb.length }));
+        if (fromWeb.length > 0) {
+          parsed.dishes = [...parsed.dishes, ...fromWeb];
+          parsed.note = '';
+        }
+      }
     }
 
     // The same dish listed on the lunch and the dinner page is one dish.
