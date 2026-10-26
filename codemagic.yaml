@@ -2,12 +2,8 @@ workflows:
   ios-testflight:
     name: Nosh Notes iOS → TestFlight
     max_build_duration: 60
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: master
-          include: true
+    # No automatic trigger: builds cost minutes, and a push to master often
+    # isn't one worth shipping. Start a build from Codemagic when it is.
 
     environment:
       groups:
