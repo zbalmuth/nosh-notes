@@ -1,8 +1,25 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { execSync } from 'node:child_process';
+
+// Which commit a build came from, shown in Settings so it's obvious which
+// version a phone is actually running. CI providers expose it; fall back to git.
+function buildCommit(): string {
+  const fromCi = process.env.CM_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA;
+  if (fromCi) return fromCi.slice(0, 7);
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    return 'unknown';
+  }
+}
 
 export default defineConfig({
+  define: {
+    __BUILD_COMMIT__: JSON.stringify(buildCommit()),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [
     react(),
     VitePWA({

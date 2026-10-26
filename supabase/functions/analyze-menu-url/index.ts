@@ -393,8 +393,16 @@ async function requireAuth(req: Request): Promise<Response | null> {
 // DoorDash and the like usually have it in full.
 const WEB_SEARCH_BELOW = 15;
 
-// Models for the web lookup, most preferred first.
-const WEB_SEARCH_MODELS = ['gpt-5-mini', 'gpt-5', 'gpt-4.1', 'gpt-4o'];
+// Where each parallel web lookup looks. Two measured best: a third (ordering
+// pages, smaller menu sites) found no more and pushed requests near the limit.
+const WEB_MENU_SOURCES = [
+  'its own website and menu listing sites such as Yelp, Allmenus, MenuPages, Zomato and Restaurantji',
+  'its listings on delivery apps such as DoorDash, Uber Eats, Grubhub, Seamless and Postmates',
+];
+
+// Models for the web lookup, most preferred first. Measured on a 110-item
+// menu: gpt-5 found ~119 every time in ~50 s; gpt-5-mini anywhere from 0 to 150.
+const WEB_SEARCH_MODELS = ['gpt-5', 'gpt-5-mini', 'gpt-4.1', 'gpt-4o'];
 
 // Which of the caller's restaurants this link belongs to. Runs as the caller,
 // so row-level security limits it to their own restaurants.
@@ -426,13 +434,12 @@ async function searchMenuOnWeb(
   restaurant: { name: string; city: string; state: string; address: string },
   url: string,
   trace: string[],
+  sources: string,
+  effort: 'low' | 'medium',
+  deadline: AbortSignal,
 ): Promise<{ name: string; dish_type: string }[]> {
   const where = [restaurant.address, restaurant.city, restaurant.state].filter(Boolean).join(', ');
-  const prompt = `Find the full current menu of the restaurant "${restaurant.name}"${where ? ` at ${where}` : ''} (website: ${url}). Search its own site and menu listings such as Yelp, DoorDash, Uber Eats, Grubhub, Allmenus and MenuPages. Make sure it is this exact location, not another restaurant with a similar name. List every dish and drink on the menu. Respond with the JSON object only.`;
-  // Measured: a full menu search takes about a minute. This still leaves the
-  // whole request inside the function's ~150 s limit (the site read runs
-  // alongside and takes seconds).
-  const deadline = AbortSignal.timeout(110000);
+  const prompt = `Find the full current menu of the restaurant "${restaurant.name}"${where ? ` at ${where}` : ''} (website: ${url}). Look at ${sources}. Make sure it is this exact location, not another restaurant with a similar name. List EVERY dish and drink on the menu, section by section — appetizers, soups, salads, mains, breads, rice, sides, desserts, drinks. Include every item you find, however long the list gets — do not stop early or summarise. This is an automated request with no one to answer questions: never ask for confirmation or offer options, just do the full search and extraction now and return what you found. Respond with the JSON object only.`;
   try {
     // Web search goes through the Responses API's web_search tool (the
     // chat-completions search model this first used has been retired). The
@@ -453,7 +460,7 @@ async function searchMenuOnWeb(
           max_output_tokens: 16000,
           // Finding and copying out a menu needs little reasoning; at the
           // default effort the search alone ran past a minute.
-          ...(model.startsWith('gpt-5') ? { reasoning: { effort: 'low' } } : {}),
+          ...(model.startsWith('gpt-5') ? { reasoning: { effort } } : {}),
         }),
         signal: deadline,
       });
@@ -521,8 +528,25 @@ serve(async (req) => {
     // after the other could outlast the function's time limit, which reached
     // the app as an error and saved nothing. Its answer is only used if the
     // site comes back short.
+    // Two searches at once, aimed at different kinds of listing, then merged:
+    // one search alone came back with a different third of the menu each time.
     const webLookup = findRestaurant(req.headers.get('Authorization') ?? '', url, trace)
-      .then((restaurant) => (restaurant ? searchMenuOnWeb(apiKey, restaurant, url, trace).then((dishes) => ({ restaurant, dishes })) : null));
+      .then(async (restaurant) => {
+        if (!restaurant) return null;
+        const found = await Promise.all(WEB_MENU_SOURCES.map(async (sources) => {
+          // Measured: a search takes 10-50 s. The cap keeps the whole request
+          // inside the function's ~150 s limit (the site read runs alongside).
+          const deadline = AbortSignal.timeout(110000);
+          const started = Date.now();
+          const dishes = await searchMenuOnWeb(apiKey, restaurant, url, trace, sources, 'low', deadline);
+          // At low effort a search now and then gives up and returns nothing;
+          // one retry with more effort, if there's time, nearly always lands.
+          if (dishes.length > 0 || Date.now() - started > 45000) return dishes;
+          trace.push('web search: empty, retrying with more effort');
+          return searchMenuOnWeb(apiKey, restaurant, url, trace, sources, 'medium', deadline);
+        }));
+        return { restaurant, dishes: found.flat() };
+      });
 
     // Fetch the URL, then follow it to the real menu when it turns out to be a
     // homepage that merely links to one.
@@ -677,12 +701,16 @@ The page content could not be fetched. Based on your knowledge of this restauran
     // The same dish listed on the lunch and the dinner page is one dish.
     if (Array.isArray(parsed.dishes)) {
       const seen = new Set<string>();
-      parsed.dishes = parsed.dishes.filter((d: { name?: string }) => {
-        const key = (d.name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+      parsed.dishes = parsed.dishes
+        .filter((d: { name?: string }) => {
+          const key = (d.name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        // Delivery apps shout ("PANEER MAKKHANI"); write those like a menu.
+        .map((d: { name: string; dish_type: string }) =>
+          /[a-z]/.test(d.name) ? d : { ...d, name: d.name.toLowerCase().replace(/(^|[\s(/-])(\p{L})/gu, (_m, pre, ch) => pre + ch.toUpperCase()) });
     }
 
     // The model's own wording for an empty result ("No specific menu items were

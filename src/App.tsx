@@ -45,6 +45,57 @@ function RouteTracker() {
   return null;
 }
 
+// Remembers how far down each page you'd scrolled, and puts you back there
+// when you return to it — from another page, another app, or after iOS has
+// killed the app in the background. Every page scrolls inside .page-content.
+function ScrollMemory() {
+  const location = useLocation();
+  const key = `nosh-scroll:${location.pathname}${location.search}`;
+  useEffect(() => {
+    const el = document.querySelector<HTMLElement>('.page-content');
+    if (!el) return;
+    let saved = 0;
+    try { saved = Number(localStorage.getItem(key)) || 0; } catch { /* storage unavailable */ }
+
+    // A page's content often arrives a moment after it mounts, so keep trying
+    // until it's tall enough to scroll that far (giving up after ~2 s), and
+    // stop the moment you start scrolling yourself.
+    let raf = 0;
+    let tries = 0;
+    let userTookOver = false;
+    const takeOver = () => { userTookOver = true; };
+    const restore = () => {
+      if (userTookOver) return;
+      if (el.scrollHeight - el.clientHeight >= saved || tries++ > 120) {
+        el.scrollTop = saved;
+        return;
+      }
+      raf = requestAnimationFrame(restore);
+    };
+    if (saved > 0) restore();
+    else el.scrollTop = 0;
+    el.addEventListener('touchstart', takeOver, { passive: true });
+    el.addEventListener('wheel', takeOver, { passive: true });
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onScroll = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        try { localStorage.setItem(key, String(Math.round(el.scrollTop))); } catch { /* storage unavailable */ }
+      }, 150);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+      el.removeEventListener('scroll', onScroll);
+      el.removeEventListener('touchstart', takeOver);
+      el.removeEventListener('wheel', takeOver);
+    };
+  }, [key]);
+  return null;
+}
+
 // The pages Back should lead through from a restored deep page, so the back
 // arrow (navigate(-1)) still has somewhere to go.
 function parentsOf(path: string): string[] {
@@ -126,6 +177,7 @@ function AppInner() {
       <BrowserRouter>
         <InitialRedirect />
         <RouteTracker />
+        <ScrollMemory />
         <div className="app-container">
           <div className="page-content">
             <Routes>

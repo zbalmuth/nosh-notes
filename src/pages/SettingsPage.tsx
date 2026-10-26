@@ -401,6 +401,12 @@ export function SettingsPage() {
           <LogOut size={16} />
           Sign Out
         </button>
+
+        {/* Which build this is — the quickest way to tell whether an update
+            has actually reached this phone. */}
+        <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', marginTop: 18 }}>
+          Version {__BUILD_COMMIT__} · built {new Date(__BUILD_TIME__).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+        </p>
       </div>
     </div>
   );
