@@ -153,6 +153,7 @@ export function AddDishPage() {
           result.dishes.map((d: { name: string; dish_type: string }) => ({
             name: d.name,
             dish_type: normalizeDishType(d.dish_type),
+            group: normalizeDishType(d.dish_type),
             action: 'ignore' as const,
             rating: 7,
             notes: '',
@@ -207,6 +208,7 @@ export function AddDishPage() {
       items.map((d) => ({
         name: d.name,
         dish_type: normalizeDishType(d.dish_type),
+        group: normalizeDishType(d.dish_type),
         action: 'ignore' as const,
         rating: 7,
         notes: '',
@@ -676,7 +678,8 @@ export function AddDishPage() {
                 Tap an action for each dish you want to add.
               </p>
 
-              <ScannedDishList dishes={scannedDishes} onUpdate={updateScannedDish} />
+              {/* A scanned photo is usually a receipt — you've already eaten these */}
+              <ScannedDishList dishes={scannedDishes} onUpdate={updateScannedDish} defaultAction="rate" />
 
               <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
                 <button

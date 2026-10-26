@@ -51,6 +51,7 @@ export function RestaurantPage() {
     updateRestaurant,
     toggleFavorite,
     showToast,
+    dishesRevision,
   } = useApp();
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
@@ -113,7 +114,7 @@ export function RestaurantPage() {
       setCached(`dishes:${id}`, d);
       setLoading(false);
     });
-  }, [id, getDishes]);
+  }, [id, getDishes, dishesRevision]);
 
   // Menu prefetch: the first time a saved restaurant is opened, scan its menu
   // URL in the background and cache the result. Every later visit — and the

@@ -133,6 +133,18 @@ export async function addDish(dish: Partial<Dish>): Promise<Dish> {
   return data;
 }
 
+// One round trip for a whole import, instead of an auth check and an insert
+// per dish.
+export async function addDishes(dishes: Partial<Dish>[]): Promise<Dish[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data, error } = await supabase
+    .from('dishes')
+    .insert(dishes.map((dish) => ({ ...dish, user_id: user?.id })))
+    .select();
+  if (error) throw error;
+  return data;
+}
+
 export async function updateDish(id: string, updates: Partial<Dish>): Promise<Dish> {
   const { data, error } = await supabase
     .from('dishes')

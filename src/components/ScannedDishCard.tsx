@@ -7,6 +7,7 @@ import { DISH_TYPES, getRatingLabel, getRatingColor } from '../types';
 export interface ScannedDish {
   name: string;
   dish_type: string;
+  group?: string; // course it was first listed under; fixed so the row doesn't jump
   action: 'rate' | 'want_to_try' | 'ignore';
   rating: number;
   notes: string;
@@ -25,9 +26,11 @@ export interface ScannedDish {
 export function ScannedDishCard({
   dish,
   onUpdate,
+  defaultAction,
 }: {
   dish: ScannedDish;
   onUpdate: (updates: Partial<ScannedDish>) => void;
+  defaultAction: 'rate' | 'want_to_try';
 }) {
   const [typeOpen, setTypeOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -52,7 +55,7 @@ export function ScannedDishCard({
         <button
           className="menu-item-head"
           aria-pressed={selected}
-          onClick={() => onUpdate({ action: selected ? 'ignore' : 'want_to_try' })}
+          onClick={() => onUpdate({ action: selected ? 'ignore' : defaultAction })}
         >
           <span className="menu-item-name">{dish.name}</span>
           {dish.duplicate && (

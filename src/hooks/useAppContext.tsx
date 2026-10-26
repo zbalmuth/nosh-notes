@@ -42,6 +42,7 @@ interface AppContextType {
   showToast: (msg: string) => void;
   importProgress: ImportProgress | null;
   startBackgroundImport: (items: Partial<Dish>[], restaurantName: string) => void;
+  dishesRevision: number;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -166,26 +167,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     showToast('Dish deleted');
   }, [showToast]);
 
-  // Background import: kicks off async loop without blocking navigation
+  // Bumped when a background import lands, so a restaurant page that loaded
+  // its dishes while the import was still running knows to reload them.
+  const [dishesRevision, setDishesRevision] = useState(0);
+
+  // Background import: kicks off async insert without blocking navigation
   const startBackgroundImport = useCallback((items: Partial<Dish>[], restaurantName: string) => {
     if (items.length === 0) return;
     (async () => {
       setImportProgress({ total: items.length, done: 0, restaurantName, status: 'running', currentDishName: items[0]?.name });
-      let done = 0;
-      for (const item of items) {
-        setImportProgress({ total: items.length, done, restaurantName, status: 'running', currentDishName: item.name });
-        try {
-          await api.addDish(item);
-        } catch (err) {
-          console.error('Background import error for dish:', item.name, err);
-        }
-        done++;
+      let added = 0;
+      try {
+        added = (await api.addDishes(items)).length;
+      } catch (err) {
+        console.error('Background import failed:', err);
       }
-      setImportProgress({ total: items.length, done: items.length, restaurantName, status: 'done' });
-      showToast(`${items.length} dish${items.length !== 1 ? 'es' : ''} added!`);
+      setDishesRevision((r) => r + 1);
+      if (added === 0) {
+        setImportProgress(null);
+        showToast(`Couldn't add dishes to ${restaurantName}. Try again.`);
+        return;
+      }
+      setImportProgress({ total: added, done: added, restaurantName, status: 'done' });
+      showToast(`${added} dish${added !== 1 ? 'es' : ''} added!`);
       await sendNotification(
         'Import complete!',
-        `${items.length} dish${items.length !== 1 ? 'es' : ''} added to ${restaurantName}`,
+        `${added} dish${added !== 1 ? 'es' : ''} added to ${restaurantName}`,
       );
       setTimeout(() => setImportProgress(null), 3000);
     })();
@@ -216,6 +223,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         showToast,
         importProgress,
         startBackgroundImport,
+        dishesRevision,
       }}
     >
       {children}
