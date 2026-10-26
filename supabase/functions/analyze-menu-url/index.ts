@@ -20,7 +20,9 @@ Respond in JSON format only:
 
 The "note" field should be empty if extraction was successful, or contain a brief message if there were issues.
 
-Extract every item you can find. Include drinks, appetizers, desserts, sides, etc. Use the exact names from the menu when available.`;
+Extract every item you can find. Include drinks, appetizers, desserts, sides, etc. Use the exact names from the menu when available.
+
+Only list specific items someone could actually order. A restaurant's homepage often describes its food in general terms ("Rich curries", "Authentic Punjabi dishes", "Flavorful basmati rice") — those are marketing copy, not menu items: leave them out. If the content has no real menu items, return an empty "dishes" list rather than guessing.`;
 
 const MAX_FETCH_BYTES = 10 * 1024 * 1024; // 10 MB cap on fetched content
 
@@ -281,11 +283,32 @@ function findMenuLinks(html: string, baseUrl: string): string[] {
     scored.set(key, Math.max(scored.get(key) ?? 0, score));
   }
 
+  // Site builders (Wix, Squarespace, GoDaddy) often draw the nav in script,
+  // so the menu link never appears as an <a> — but its URL still sits in the
+  // page's code. Pick up same-site URLs with "menu" in the path from anywhere.
+  let host = '';
+  try { host = new URL(baseUrl).hostname.replace(/^www\./, ''); } catch { /* keep '' */ }
+  for (const [, raw] of html.matchAll(/["'(](https?:\\?\/\\?\/[^"'()\s<>]+|\/[A-Za-z0-9][^"'()\s<>]*)["')]/g)) {
+    const candidate = raw.replace(/\\\//g, '/');
+    let resolved: URL;
+    try { resolved = new URL(candidate, baseUrl); } catch { continue; }
+    if (resolved.hostname.replace(/^www\./, '') !== host) continue;
+    if (!STRONG_MENU_WORD.test(resolved.pathname.replace(/[-_/.]/g, ' '))) continue;
+    if (/\.(css|js|json|svg|woff2?|ico)(\?|$)/i.test(resolved.pathname)) continue;
+    const key = resolved.toString().split('#')[0];
+    if (key === baseUrl.split('#')[0] || !isAllowedUrl(key)) continue;
+    const isPdf = /\.pdf(\?|#|$)/i.test(key);
+    scored.set(key, Math.max(scored.get(key) ?? 0, 3 + (isPdf ? 2 : 0)));
+  }
+
   return [...scored.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([url]) => url)
     .slice(0, MAX_MENU_LINKS_FOLLOWED);
 }
+
+// Where a menu usually lives when the homepage gives no sign of it.
+const COMMON_MENU_PATHS = ['/menu', '/menus', '/our-menu', '/food-menu', '/menu.html', '/menu.pdf'];
 
 // Given whatever the user's URL turned out to be, return everything worth
 // showing the model: the page itself if it's a menu, any menu files it embeds,
@@ -308,7 +331,12 @@ async function resolveBestSources(source: Source): Promise<Source[]> {
 
   // Linked menus, fetched in parallel — one at a time, a few slow pages added
   // up to most of the wait.
-  const links = findMenuLinks(source.html, source.url);
+  let links = findMenuLinks(source.html, source.url);
+  // Nothing on the page points at a menu: try the usual addresses (a miss is
+  // just a quick 404).
+  if (links.length === 0 && !ownIsMenu) {
+    links = COMMON_MENU_PATHS.map((path) => new URL(path, source.url).toString());
+  }
   const candidates = await Promise.all(links.map((link) => loadSource(link)));
   for (const candidate of candidates) {
     if (!candidate) continue;
@@ -385,6 +413,12 @@ serve(async (req) => {
     // homepage that merely links to one.
     const fetched = await loadSource(url);
     const sources = fetched ? await resolveBestSources(fetched) : [];
+    // What was actually read, for working out why a menu came back short.
+    console.log(JSON.stringify({
+      menu_url: url,
+      fetched: fetched ? { kind: fetched.kind, url: fetched.url, bytes: fetched.kind === 'html' ? fetched.html.length : fetched.bytes.byteLength } : null,
+      sources: sources.map((s) => ({ kind: s.kind, url: s.url, text: s.kind === 'html' ? stripHtml(s.html).length : undefined })),
+    }));
     const source = sources[0] ?? null;
     const imageSources = sources.filter((s): s is Extract<Source, { kind: 'image' }> => s.kind === 'image');
     const pdfSources = sources.filter((s): s is Extract<Source, { kind: 'pdf' }> => s.kind === 'pdf');
