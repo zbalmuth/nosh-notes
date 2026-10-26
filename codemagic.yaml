@@ -102,7 +102,10 @@ workflows:
         script: |
           ARCHIVE_PATH="/tmp/App.xcarchive"
           IPA_DIR="/tmp/ipa"
-          (cd ios/App && agvtool new-version -all "$BUILD_NUMBER")
+          # Apple rejects an upload whose build number isn't higher than every
+          # one before it, and Codemagic's own counter can fall behind builds
+          # uploaded another way. A timestamp (261026.1936) only ever goes up.
+          (cd ios/App && agvtool new-version -all "$(date -u +%y%m%d.%H%M)")
           cat > "/tmp/ExportOptions.plist" << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -136,8 +139,12 @@ workflows:
 
       - name: Upload to App Store Connect
         script: |
+          # A failed upload must fail the build. The key cleanup used to be the
+          # last command, so its success turned every failed upload green.
+          set -e
           KEY_DIR="$HOME/.appstoreconnect/private_keys"
           KEY_FILE="$KEY_DIR/AuthKey_${APP_STORE_CONNECT_KEY_IDENTIFIER}.p8"
+          trap 'rm -f "$KEY_FILE"' EXIT
           mkdir -p "$KEY_DIR"
           echo "$APP_STORE_CONNECT_PRIVATE_KEY" | base64 --decode > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
@@ -149,8 +156,6 @@ workflows:
             --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
             --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
             --private-key "@file:$KEY_FILE"
-
-          rm -f "$KEY_FILE"
 
     artifacts:
       - /tmp/ipa/*.ipa
