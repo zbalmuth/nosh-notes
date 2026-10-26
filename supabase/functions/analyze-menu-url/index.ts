@@ -25,13 +25,20 @@ Extract every item you can find. Include drinks, appetizers, desserts, sides, et
 const MAX_FETCH_BYTES = 10 * 1024 * 1024; // 10 MB cap on fetched content
 
 // A restaurant's homepage rarely holds the menu itself — it links to it, often
-// as a PDF or a /menu page. Follow at most this many of those links, best
-// candidate first, before giving up.
-const MAX_MENU_LINKS_FOLLOWED = 3;
+// as a PDF or a /menu page, and the menu is often split across several of them
+// (lunch, dinner, drinks). Follow this many, best candidate first, all at once.
+const MAX_MENU_LINKS_FOLLOWED = 5;
 
 // A menu split across several embedded files (dinner, wine, dessert) is normal.
 // Read a few and let the model see them together.
 const MAX_EMBEDDED_MENUS = 3;
+
+// Everything read off one restaurant goes to the model together, up to these.
+const MAX_SOURCES = 6;
+// Page text the model sees, across all pages. This was 12,000 characters for
+// one page, which cut a long menu with descriptions off partway through — the
+// "it found 14 dishes" failure. A full menu fits easily in this.
+const MAX_PAGE_TEXT = 80000;
 
 // A restaurant site that never finishes responding would otherwise hold the
 // whole request open — one took 136 s in a sweep of this user's list. Every
@@ -280,37 +287,45 @@ function findMenuLinks(html: string, baseUrl: string): string[] {
     .slice(0, MAX_MENU_LINKS_FOLLOWED);
 }
 
-// Given whatever the user's URL turned out to be, return the thing most worth
-// showing the model. For an HTML page that isn't itself a menu, that usually
-// means following one of its menu links.
-// Returns everything worth showing the model — usually one thing, but a menu
-// embedded as several files comes back as several.
+// Given whatever the user's URL turned out to be, return everything worth
+// showing the model: the page itself if it's a menu, any menu files it embeds,
+// and every menu page or file it links to that actually reads like a menu.
+// Falls back to the page itself when none of that turns anything up.
 async function resolveBestSources(source: Source): Promise<Source[]> {
   if (source.kind !== 'html') return [source];
 
+  const found: Source[] = [];
   const ownText = stripHtml(source.html);
   const ownScore = menuScore(ownText);
-  // A page already sitting at /menu with real menu text on it needs no hops.
-  if (isMenuish(new URL(source.url).pathname) && ownScore > 0 && ownText.length >= 900) return [source];
+  // A page at /menu with any menu text, or any page with real prices on it.
+  const ownIsMenu = ownText.length >= 900 &&
+    ((isMenuish(new URL(source.url).pathname) && ownScore > 0) || ownScore >= 6);
+  if (ownIsMenu) found.push(source);
 
-  // Embedded files first: a page that embeds its menu usually has nothing in
-  // its own markup, so following its links would only find more of the same.
-  const embedded = await loadEmbeddedMenus(source.html, source.url);
-  if (embedded.length) return embedded;
+  // Embedded files: a page that embeds its menu usually has nothing in its
+  // own markup.
+  found.push(...await loadEmbeddedMenus(source.html, source.url));
 
-  for (const link of findMenuLinks(source.html, source.url)) {
-    const candidate = await loadSource(link);
+  // Linked menus, fetched in parallel — one at a time, a few slow pages added
+  // up to most of the wait.
+  const links = findMenuLinks(source.html, source.url);
+  const candidates = await Promise.all(links.map((link) => loadSource(link)));
+  for (const candidate of candidates) {
     if (!candidate) continue;
-    // A linked PDF or image menu beats any amount of homepage prose.
-    if (candidate.kind !== 'html') return [candidate];
+    // A linked PDF or image menu is the menu.
+    if (candidate.kind !== 'html') { found.push(candidate); continue; }
     // The menu page reached from a homepage is frequently itself just a shell
     // around embedded files, so it has to be opened the same way.
     const nested = await loadEmbeddedMenus(candidate.html, candidate.url);
-    if (nested.length) return nested;
-    if (menuScore(stripHtml(candidate.html)) > ownScore) return [candidate];
+    if (nested.length) { found.push(...nested); continue; }
+    // It was linked as a menu; a few prices or section headings confirm it.
+    // (Some menus print no prices at all.)
+    if (menuScore(stripHtml(candidate.html)) >= 3) found.push(candidate);
   }
 
-  return [source];
+  // The same file is often linked from more than one place.
+  const unique = [...new Map(found.map((s) => [s.url.split('#')[0], s])).values()];
+  return unique.length ? unique.slice(0, MAX_SOURCES) : [source];
 }
 
 async function loadEmbeddedMenus(html: string, baseUrl: string): Promise<Source[]> {
@@ -372,91 +387,77 @@ serve(async (req) => {
     const sources = fetched ? await resolveBestSources(fetched) : [];
     const source = sources[0] ?? null;
     const imageSources = sources.filter((s): s is Extract<Source, { kind: 'image' }> => s.kind === 'image');
+    const pdfSources = sources.filter((s): s is Extract<Source, { kind: 'pdf' }> => s.kind === 'pdf');
+    const htmlSources = sources.filter((s): s is Extract<Source, { kind: 'html' }> => s.kind === 'html');
     const pageText = source?.kind === 'html' ? stripHtml(source.html) : '';
 
-    let messages: unknown[];
-    let openaiFileId: string | null = null;
-
-    if (imageSources.length > 0) {
-      // --- IMAGE MENU(S): Send to GPT-4o vision. Several pages of one menu
-      // go in the same message so the model reads them as a single menu.
-      const intro = imageSources.length > 1
-        ? `These ${imageSources.length} images are pages of one restaurant's menu. Extract all the dishes and drinks across all of them.`
-        : 'This is a photo/image of a restaurant menu. Extract all the dishes and drinks.';
-      messages = [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: intro },
-            ...imageSources.map((img) => ({
-              type: 'image_url',
-              image_url: { url: `data:${img.mime};base64,${base64Encode(new Uint8Array(img.bytes))}` },
-            })),
-          ],
-        },
-      ];
-    } else if (source?.kind === 'pdf') {
-      // --- PDF MENU: Upload to OpenAI Files API, then reference in chat ---
-      // First upload the PDF to OpenAI
+    // PDFs go up to OpenAI's file store and are referenced from the message.
+    const openaiFileIds: string[] = [];
+    for (const pdf of pdfSources) {
       const formData = new FormData();
-      const pdfBlob = new Blob([new Uint8Array(source.bytes)], { type: 'application/pdf' });
-      formData.append('file', pdfBlob, 'menu.pdf');
+      formData.append('file', new Blob([new Uint8Array(pdf.bytes)], { type: 'application/pdf' }), 'menu.pdf');
       formData.append('purpose', 'assistants');
-
-      const uploadRes = await fetch('https://api.openai.com/v1/files', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}` },
-        body: formData,
-      });
-      const uploadData = await uploadRes.json();
-
-      if (uploadData.id) {
-        openaiFileId = uploadData.id;
-        // Use the file reference in the chat completion
-        messages = [
-          { role: 'system', content: SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: `This is a PDF menu from ${source.url}. Extract ALL dishes and drinks from every section and page. Be thorough — do not skip any items.` },
-              { type: 'file', file: { file_id: uploadData.id } },
-            ],
-          },
-        ];
-      } else {
-        // Upload failed — fallback to asking GPT based on URL
-        messages = [
-          { role: 'system', content: SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: `I want to know the menu items from this restaurant: ${url}\n\nThe PDF could not be processed. Based on your knowledge of this restaurant, provide the menu items you're aware of. If you don't know this restaurant, return {"dishes": [], "note": "Could not process the PDF menu. Try taking a photo instead."}`,
-          },
-        ];
+      try {
+        const uploadRes = await fetch('https://api.openai.com/v1/files', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}` },
+          body: formData,
+        });
+        const uploadData = await uploadRes.json();
+        if (uploadData.id) openaiFileIds.push(uploadData.id);
+      } catch {
+        // One unreadable PDF shouldn't sink the pages that did load.
       }
-    } else if (source?.kind === 'html' && pageText.length > 200) {
-      // --- HTML PAGE: Strip and send as text ---
-      // Also extract JSON-LD structured data
-      const jsonLdMatches = source.html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
-      let structuredData = '';
-      if (jsonLdMatches) {
-        for (const match of jsonLdMatches) {
-          const json = match.replace(/<script[^>]*>/, '').replace(/<\/script>/, '').trim();
+    }
+
+    // Every readable page, each with its own share of the text budget, plus
+    // any JSON-LD menu data it carries.
+    const pageBlocks = htmlSources
+      .map((page) => {
+        let structured = '';
+        for (const match of page.html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) ?? []) {
           try {
-            const parsed = JSON.parse(json);
-            structuredData += JSON.stringify(parsed) + '\n';
-          } catch {}
+            structured += JSON.stringify(JSON.parse(match.replace(/<script[^>]*>/, '').replace(/<\/script>/, '').trim())) + '\n';
+          } catch {
+            // malformed JSON-LD is common; the page text still has the menu
+          }
         }
+        const text = stripHtml(page.html).slice(0, Math.floor(MAX_PAGE_TEXT / htmlSources.length));
+        return { url: page.url, text, structured };
+      })
+      .filter((page) => page.text.length > 200 || page.structured);
+
+    const parts: unknown[] = [];
+    if (pageBlocks.length || imageSources.length || openaiFileIds.length) {
+      const pieces = pageBlocks.length + imageSources.length + openaiFileIds.length;
+      parts.push({
+        type: 'text',
+        text: pieces > 1
+          ? `The following ${pieces} pages, files and images are all from one restaurant's menu (lunch, dinner, drinks and so on may be split across them). Extract ALL dishes and drinks from every one of them. Be thorough — do not skip any items or sections.`
+          : 'This is a restaurant menu. Extract ALL dishes and drinks from every section. Be thorough — do not skip any items.',
+      });
+      for (const page of pageBlocks) {
+        parts.push({
+          type: 'text',
+          text: `${page.structured ? `STRUCTURED MENU DATA:\n${page.structured}\n` : ''}MENU PAGE at ${page.url}:\n\n${page.text}`,
+        });
       }
+      for (const img of imageSources) {
+        parts.push({
+          type: 'image_url',
+          image_url: { url: `data:${img.mime};base64,${base64Encode(new Uint8Array(img.bytes))}` },
+        });
+      }
+      for (const fileId of openaiFileIds) {
+        parts.push({ type: 'file', file: { file_id: fileId } });
+      }
+    }
 
-      const body = pageText.slice(0, 12000);
-      const content = structuredData
-        ? `STRUCTURED MENU DATA:\n${structuredData}\n\nPAGE TEXT:\n${body}`
-        : `Menu page at ${source.url}:\n\n${body}`;
-
+    let messages: unknown[];
+    if (parts.length) {
       messages = [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content },
+        { role: 'user', content: parts },
       ];
     } else {
       // --- FALLBACK: Rely on GPT's knowledge of the restaurant ---
@@ -480,16 +481,19 @@ The page content could not be fetched. Based on your knowledge of this restauran
       body: JSON.stringify({
         model: 'gpt-4o',
         messages,
-        max_tokens: 4096,
-        temperature: 0.3,
+        // A big menu is a long answer. At 4,096 it could be cut off mid-JSON,
+        // which then failed to parse and came back as no dishes at all.
+        max_tokens: 16000,
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
       }),
     });
 
     const data = await response.json();
 
     // Delete the uploaded PDF from OpenAI's file storage — best-effort, don't fail on cleanup errors.
-    if (openaiFileId) {
-      fetch(`https://api.openai.com/v1/files/${openaiFileId}`, {
+    for (const fileId of openaiFileIds) {
+      fetch(`https://api.openai.com/v1/files/${fileId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${apiKey}` },
       }).catch(() => {});
@@ -506,6 +510,17 @@ The page content could not be fetched. Based on your knowledge of this restauran
       parsed = JSON.parse(jsonStr);
     } catch {
       parsed = { dishes: [], note: 'Failed to parse AI response' };
+    }
+
+    // The same dish listed on the lunch and the dinner page is one dish.
+    if (Array.isArray(parsed.dishes)) {
+      const seen = new Set<string>();
+      parsed.dishes = parsed.dishes.filter((d: { name?: string }) => {
+        const key = (d.name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     }
 
     // The model's own wording for an empty result ("No specific menu items were

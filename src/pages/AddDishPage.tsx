@@ -116,6 +116,8 @@ export function AddDishPage() {
   // Set when the list on screen came from the saved menu rather than a fresh
   // scan, so we can label it and offer a rescan.
   const [menuScannedAt, setMenuScannedAt] = useState<string | null>(null);
+  // The link box above an existing list, for trying another page of the menu.
+  const [linkOpen, setLinkOpen] = useState(false);
 
   // ─── Scan handlers ──────────────────────────────────────────────────────────
 
@@ -270,12 +272,28 @@ export function AddDishPage() {
         analyzeMenuUrl(trimmedUrl),
         getDishes(restaurantId),
       ]);
-      const items = (result.dishes || []).map((d) => ({ name: d.name, dish_type: d.dish_type }));
-      setUrlDishes(toScannedDishes(items, existingDishes));
-      setUrlNote(result.note || '');
+      const found = (result.dishes || []).map((d) => ({ name: d.name, dish_type: d.dish_type }));
+      // A new link adds to the list rather than replacing it: a menu is often
+      // split across pages (lunch, dinner, drinks), and a second link that
+      // finds less shouldn't throw away what the first one found. Your picks
+      // on dishes already listed are kept.
+      const known = new Set(urlDishes.map((d) => normalizeName(d.name)));
+      const fresh = found.filter((d) => !known.has(normalizeName(d.name)));
+      const merged = [...urlDishes, ...toScannedDishes(fresh, existingDishes)];
+      setUrlDishes(merged);
+      setLinkOpen(false);
+      if (urlDishes.length > 0) {
+        setUrlNote('');
+        showToast(fresh.length > 0
+          ? `Added ${fresh.length} more dish${fresh.length !== 1 ? 'es' : ''}`
+          : result.note || 'No new dishes on that page');
+      } else {
+        setUrlNote(result.note || '');
+      }
       // Save the menu so this restaurant never has to be scanned again.
-      if (items.length > 0) {
-        saveRestaurantMenu(restaurantId, trimmedUrl, items, result.note || '').catch(() => {});
+      if (fresh.length > 0) {
+        const items = merged.map((d) => ({ name: d.name, dish_type: d.group ?? d.dish_type }));
+        saveRestaurantMenu(restaurantId, trimmedUrl, items, '').catch(() => {});
       }
     } catch (err) {
       setUrlNote(err instanceof Error ? err.message : 'Failed to analyze menu');
@@ -810,14 +828,41 @@ export function AddDishPage() {
                     {menuScannedAt && ` · scanned ${new Date(menuScannedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`}
                   </p>
                 </div>
-                <button
-                  className="menu-rescan"
-                  onClick={handleAnalyzeUrl}
-                  disabled={urlLoading || !menuUrl.trim()}
-                >
-                  <RefreshCw size={12} /> Rescan
+                <button className="menu-rescan" onClick={() => setLinkOpen((open) => !open)}>
+                  <RefreshCw size={12} /> {linkOpen ? 'Close' : 'Another link'}
                 </button>
               </div>
+
+              {/* Missing dishes? Point it at another page of the menu (or the
+                  same one again); whatever it finds is added below. */}
+              {linkOpen && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      className="input"
+                      type="url"
+                      placeholder="https://restaurant.com/menu"
+                      value={menuUrl}
+                      autoFocus
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setMenuUrl(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && menuUrl.trim()) handleAnalyzeUrl(); }}
+                      style={{ flex: 1, fontSize: 13 }}
+                    />
+                    <button
+                      className="btn btn-primary"
+                      style={{ padding: '12px 18px', whiteSpace: 'nowrap' }}
+                      disabled={urlLoading || !menuUrl.trim()}
+                      onClick={handleAnalyzeUrl}
+                    >
+                      Import
+                    </button>
+                  </div>
+                  <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '6px 0 0' }}>
+                    New dishes are added to this list. Paste the menu page itself, or a PDF.
+                  </p>
+                </div>
+              )}
 
               <ScannedDishList dishes={urlDishes} onUpdate={updateUrlDish} />
 
