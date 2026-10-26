@@ -8,6 +8,7 @@ import { ScannedDishList } from '../components/ScannedDishList';
 import type { ScannedDish } from '../components/ScannedDishCard';
 import { analyzeDishImage, analyzeMenuUrl, uploadPhoto, getRestaurantMenu, saveRestaurantMenu } from '../lib/api';
 import { resolveMenuUrl } from '../lib/menu';
+import { usePersistentState, clearPersistentState } from '../hooks/usePersistentState';
 import { DISH_TYPES, getRatingLabel, getRatingColor, normalizeDishType } from '../types';
 import type { Dish, DishType } from '../types';
 
@@ -76,19 +77,17 @@ export function AddDishPage() {
   // Tab state. The restaurant page links straight to ?tab=url once a menu
   // has been scanned and cached.
   const [searchParams] = useSearchParams();
-  // Picking from the restaurant's own menu is the fast path, so it leads;
-  // typing a dish in by hand is the fallback for when that finds nothing.
-  const [activeTab, setActiveTab] = useState<'manual' | 'scan' | 'url'>(() => {
-    const requested = searchParams.get('tab');
-    return requested === 'manual' || requested === 'scan' ? requested : 'url';
-  });
+
+  // What you've picked, rated and typed is kept per restaurant across leaving
+  // the page or the app. (Photos aren't: they're too big to stash.)
+  const draft = `addDish:${restaurantId}:`;
 
   // Manual entry state
-  const [name, setName] = useState('');
-  const [dishType, setDishType] = useState<DishType>('entree');
-  const [wantToTry, setWantToTry] = useState(false);
-  const [rating, setRating] = useState(7);
-  const [notes, setNotes] = useState('');
+  const [name, setName] = usePersistentState(draft + 'name', '');
+  const [dishType, setDishType] = usePersistentState<DishType>(draft + 'dishType', 'entree');
+  const [wantToTry, setWantToTry] = usePersistentState(draft + 'wantToTry', false);
+  const [rating, setRating] = usePersistentState(draft + 'rating', 7);
+  const [notes, setNotes] = usePersistentState(draft + 'notes', '');
   const [photos, setPhotos] = useState<string[]>([]);
   const [photoViewIndex, setPhotoViewIndex] = useState(0);
   const [photoFullscreen, setPhotoFullscreen] = useState(false);
@@ -97,13 +96,22 @@ export function AddDishPage() {
   // Scan state
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeStatus, setAnalyzeStatus] = useState('');
-  const [scannedDishes, setScannedDishes] = useState<ScannedDish[]>([]);
+  const [scannedDishes, setScannedDishes] = usePersistentState<ScannedDish[]>(draft + 'scanned', []);
   const [scanPhoto, setScanPhoto] = useState<string | null>(null);
+
+  // Picking from the restaurant's own menu is the fast path, so it leads;
+  // typing a dish in by hand is the fallback for when that finds nothing.
+  // Declared after the scan list so a scan you came back to opens on its tab.
+  const [activeTab, setActiveTab] = useState<'manual' | 'scan' | 'url'>(() => {
+    const requested = searchParams.get('tab');
+    if (requested === 'manual' || requested === 'scan') return requested;
+    return scannedDishes.length > 0 ? 'scan' : 'url';
+  });
 
   // URL state
   const [menuUrl, setMenuUrl] = useState('');
   const [urlLoading, setUrlLoading] = useState(false);
-  const [urlDishes, setUrlDishes] = useState<ScannedDish[]>([]);
+  const [urlDishes, setUrlDishes] = usePersistentState<ScannedDish[]>(draft + 'menu', []);
   const [urlNote, setUrlNote] = useState('');
   // Set when the list on screen came from the saved menu rather than a fresh
   // scan, so we can label it and offer a rescan.
@@ -198,6 +206,7 @@ export function AddDishPage() {
       photos: [],
     }));
     startBackgroundImport(items, restaurant?.name || 'Restaurant');
+    clearPersistentState(draft);
     navigate(`/restaurant/${restaurantId}`, { replace: true });
   };
 
@@ -227,13 +236,14 @@ export function AddDishPage() {
       ([menu, existingDishes]) => {
         if (cancelled || !menu || menu.items.length === 0) return;
         setMenuUrl(menu.source_url || '');
-        setUrlDishes(toScannedDishes(menu.items, existingDishes));
+        // Keep a list you were partway through picking from.
+        setUrlDishes((prev) => (prev.length > 0 ? prev : toScannedDishes(menu.items, existingDishes)));
         setUrlNote('');
         setMenuScannedAt(menu.scanned_at);
       },
     );
     return () => { cancelled = true; };
-  }, [restaurantId, getDishes, toScannedDishes]);
+  }, [restaurantId, getDishes, toScannedDishes, setUrlDishes]);
 
   // Nothing saved yet — offer the restaurant's own menu link as the default,
   // falling back to its website when no usable menu URL is on file.
@@ -297,6 +307,7 @@ export function AddDishPage() {
       notes: dish.notes,
     }));
     startBackgroundImport(items, restaurant?.name || 'Restaurant');
+    clearPersistentState(draft);
     navigate(`/restaurant/${restaurantId}`, { replace: true });
   };
 
@@ -345,6 +356,7 @@ export function AddDishPage() {
         photos: uploadedPhotos,
       });
       showToast('Dish added!');
+      clearPersistentState(draft);
       navigate(`/restaurant/${restaurantId}`, { replace: true });
     } catch (err) {
       console.error('Failed to add dish', err);

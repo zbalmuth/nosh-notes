@@ -1078,3 +1078,58 @@ textarea.input {
   white-space: nowrap;
   flex-shrink: 0;
 }
+
+/* ─── A–Z index (home list) ─────────────────────────────────────────────── */
+
+/* Runs between the header and the + button, so it never sits under either. */
+.alpha-index {
+  position: fixed;
+  right: 0;
+  top: calc(env(safe-area-inset-top) + 130px);
+  bottom: calc(150px + env(safe-area-inset-bottom));
+  width: 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  z-index: 40;
+  touch-action: none; /* a drag along the strip scrubs letters, not the page */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.alpha-index button {
+  flex: 1 1 0;
+  max-height: 18px;
+  min-height: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: 'Righteous', cursive;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--hot-pink);
+}
+
+.alpha-index button.empty {
+  color: var(--text-muted);
+  opacity: 0.45;
+}
+
+.alpha-index-bubble {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--white);
+  font-family: 'Righteous', cursive;
+  font-size: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 41;
+}

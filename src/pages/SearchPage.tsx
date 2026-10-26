@@ -7,6 +7,7 @@ import type { SearchResult, SearchProvider, Dish } from '../types';
 import { getRatingColor } from '../types';
 import { detectLocation, getLocationPref } from '../lib/location';
 import { RestaurantDetailDialog } from '../components/RestaurantDetailDialog';
+import { usePersistentState } from '../hooks/usePersistentState';
 
 type SearchMode = 'all' | 'nearby';
 
@@ -14,31 +15,40 @@ export function SearchPage() {
   const navigate = useNavigate();
   const { restaurants } = useApp();
 
-  const [query, setQuery] = useState('');
-  const [mode, setMode] = useState<SearchMode>('all');
+  // Everything you'd have to redo is kept across leaving the tab or the app:
+  // the query, its options, and what it found.
+  const [query, setQuery] = usePersistentState('search:query', '');
+  const [mode, setMode] = usePersistentState<SearchMode>('search:mode', 'all');
   const [detailResult, setDetailResult] = useState<SearchResult | null>(null);
   const [locationLabel, setLocationLabel] = useState('');
   const [editingLocation, setEditingLocation] = useState(false);
-  const [customLocation, setCustomLocation] = useState('');
+  const [customLocation, setCustomLocation] = usePersistentState('search:location', '');
   const [latitude, setLatitude] = useState<number | undefined>();
   const [longitude, setLongitude] = useState<number | undefined>();
 
   // Dish search
-  const [dishResults, setDishResults] = useState<Dish[]>([]);
+  const [dishResults, setDishResults] = usePersistentState<Dish[]>('search:dishes', []);
   const [searchingDishes, setSearchingDishes] = useState(false);
 
   // External discover
-  const [discoverResults, setDiscoverResults] = useState<SearchResult[]>([]);
+  const [discoverResults, setDiscoverResults] = usePersistentState<SearchResult[]>('search:discover', []);
   const [discovering, setDiscovering] = useState(false);
-  const [discoverError, setDiscoverError] = useState('');
-  const [provider, setProvider] = useState<SearchProvider>('google');
+  const [discoverError, setDiscoverError] = usePersistentState('search:discoverError', '');
+  const [provider, setProvider] = usePersistentState<SearchProvider>('search:provider', 'google');
+
+  // The search the saved results answer. Coming back to that same search,
+  // they stand — re-running it is exactly the wait this is here to save.
+  const [resultsFor, setResultsFor] = usePersistentState('search:resultsFor', '');
+  const restoredSearch = useRef<string | null>(resultsFor || null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const promptedRef = useRef(false);
 
   useEffect(() => {
-    inputRef.current?.focus();
+    // Coming back to results: let you read them rather than raising the keyboard.
+    if (!query) inputRef.current?.focus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Acquire location for "Discover Nearby".
@@ -110,6 +120,9 @@ export function SearchPage() {
   // Debounced dish + external search (700 ms)
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    const searchKey = `${query}|${provider}|${customLocation}`;
+    if (restoredSearch.current === searchKey) return;
+    restoredSearch.current = null;
     if (query.trim().length < 2) {
       setDishResults([]);
       setDiscoverResults([]);
@@ -140,6 +153,7 @@ export function SearchPage() {
       searchRestaurantsDetailed(query, provider, loc, latitude, longitude)
         .then(({ results, warning }) => {
           setDiscoverResults(results);
+          setResultsFor(searchKey);
           // Say why nothing came back, rather than showing a bare empty list.
           setDiscoverError(results.length === 0 && warning ? warning : '');
         })
@@ -150,7 +164,7 @@ export function SearchPage() {
         .finally(() => setDiscovering(false));
     }, 700);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query, provider, locationLabel, customLocation, homeCity, latitude, longitude, promptForLocation]);
+  }, [query, provider, locationLabel, customLocation, homeCity, latitude, longitude, promptForLocation, setResultsFor]);
 
   const clearQuery = () => {
     setQuery('');

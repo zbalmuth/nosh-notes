@@ -24,29 +24,59 @@ applyTheme(getTheme());
 
 const NAV_ROUTES = ['/', '/map', '/search', '/settings'];
 
-// Saves the current nav tab to localStorage whenever it changes
+// Deep pages (a restaurant, adding a dish) are only worth reopening if you
+// were just there; after this long, cold start goes back to your tab.
+const DEEP_ROUTE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+// Saves where you are whenever it changes: the nav tab, plus the exact page.
+// iOS can kill the app while it's in the background, and without this coming
+// back always dropped you on a tab instead of the page you left.
 function RouteTracker() {
   const location = useLocation();
   useEffect(() => {
     if (NAV_ROUTES.includes(location.pathname)) {
       localStorage.setItem('nosh-last-route', location.pathname);
     }
-  }, [location.pathname]);
+    localStorage.setItem(
+      'nosh-last-page',
+      JSON.stringify({ path: location.pathname + location.search, t: Date.now() }),
+    );
+  }, [location.pathname, location.search]);
   return null;
 }
 
-// On first mount, navigates to the last saved tab (runs inside BrowserRouter via useEffect,
-// so it happens after the first render and avoids any WebView URL side-effects during render)
+// The pages Back should lead through from a restored deep page, so the back
+// arrow (navigate(-1)) still has somewhere to go.
+function parentsOf(path: string): string[] {
+  const restaurant = path.match(/^\/restaurant\/[^/?]+/)?.[0];
+  return restaurant && restaurant !== path.split('?')[0] ? [restaurant] : [];
+}
+
+// On first mount, navigates back to where you were (runs inside BrowserRouter
+// via useEffect, so it happens after the first render and avoids any WebView
+// URL side-effects during render)
 function InitialRedirect() {
   const navigate = useNavigate();
   const done = useRef(false);
   useEffect(() => {
     if (done.current) return;
     done.current = true;
-    const saved = localStorage.getItem('nosh-last-route');
-    if (saved && saved !== '/') {
-      navigate(saved, { replace: true });
+    const tab = localStorage.getItem('nosh-last-route');
+    if (tab && tab !== '/') navigate(tab, { replace: true });
+
+    let page: { path: string; t: number } | null = null;
+    try {
+      page = JSON.parse(localStorage.getItem('nosh-last-page') ?? 'null');
+    } catch {
+      // unreadable — just use the tab
     }
+    if (!page || Date.now() - page.t > DEEP_ROUTE_MAX_AGE_MS) return;
+    if (NAV_ROUTES.includes(page.path.split('?')[0])) {
+      // A tab with a query (e.g. /?search=true) — the tab alone is enough.
+      return;
+    }
+    for (const parent of parentsOf(page.path)) navigate(parent);
+    navigate(page.path);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return null;

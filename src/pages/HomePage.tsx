@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '../hooks/useAppContext';
 import { RestaurantCard } from '../components/RestaurantCard';
+import { AlphabetIndex } from '../components/AlphabetIndex';
+import { indexLetter } from '../lib/alphabet';
 
 const FILTERS_KEY = 'nosh-notes-filters';
 
@@ -275,6 +277,11 @@ export function HomePage() {
 
     return result;
   }, [restaurants, favoritesOnly, selectedList, selectedCity, selectedCuisine, searchQuery, sortBy, sortDir]);
+
+  // The A–Z strip only makes sense when the list is in name order and long
+  // enough to be worth jumping around in.
+  const showIndex = sortBy === 'name' && filtered.length >= 12;
+  const indexLetters = useMemo(() => new Set(filtered.map((r) => indexLetter(r.name))), [filtered]);
 
   const handleCreateList = async () => {
     if (!newListName.trim()) return;
@@ -721,15 +728,21 @@ export function HomePage() {
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
               {filtered.length} restaurant{filtered.length !== 1 ? 's' : ''}
             </p>
-            {filtered.map((r) => (
-              <RestaurantCard
-                key={r.id}
-                restaurant={r}
-                selectionMode={selectionMode}
-                selected={selectedIds.has(r.id)}
-                onToggleSelect={() => toggleSelect(r.id)}
-              />
-            ))}
+            {filtered.map((r, i) => {
+              const letter = indexLetter(r.name);
+              const firstOfLetter = i === 0 || indexLetter(filtered[i - 1].name) !== letter;
+              return (
+                <div key={r.id} data-index-letter={showIndex && firstOfLetter ? letter : undefined}>
+                  <RestaurantCard
+                    restaurant={r}
+                    selectionMode={selectionMode}
+                    selected={selectedIds.has(r.id)}
+                    onToggleSelect={() => toggleSelect(r.id)}
+                  />
+                </div>
+              );
+            })}
+            {showIndex && <AlphabetIndex present={indexLetters} descending={sortDir === 'desc'} />}
           </>
         )}
       </div>

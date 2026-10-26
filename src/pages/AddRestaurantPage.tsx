@@ -5,6 +5,7 @@ import { useApp } from '../hooks/useAppContext';
 import { searchRestaurants } from '../lib/api';
 import type { SearchResult, SearchProvider } from '../types';
 import { detectLocation } from '../lib/location';
+import { usePersistentState, clearPersistentState } from '../hooks/usePersistentState';
 
 type Tab = 'search' | 'manual';
 
@@ -106,36 +107,38 @@ export function AddRestaurantPage() {
   const routerLocation = useLocation();
   const { lists, cuisineTags: existingTags, addRestaurant, addList } = useApp();
 
-  const [tab, setTab] = useState<Tab>('search');
+  // The search and the form are kept across leaving the page or the app, so
+  // a trip elsewhere doesn't mean searching and filling it in all over again.
+  const [tab, setTab] = usePersistentState<Tab>('addRestaurant:tab', 'search');
 
   // Search state
-  const [query, setQuery] = useState('');
-  const [searchLocation, setSearchLocation] = useState('');
-  const [provider, setProvider] = useState<SearchProvider>('google');
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [query, setQuery] = usePersistentState('addRestaurant:query', '');
+  const [searchLocation, setSearchLocation] = usePersistentState('addRestaurant:searchLocation', '');
+  const [provider, setProvider] = usePersistentState<SearchProvider>('addRestaurant:provider', 'google');
+  const [results, setResults] = usePersistentState<SearchResult[]>('addRestaurant:results', []);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
-  const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null);
+  const [selectedResult, setSelectedResult] = usePersistentState<SearchResult | null>('addRestaurant:selectedResult', null);
 
   // Form state (shared between search-selected and manual)
-  const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [phone, setPhone] = useState('');
-  const [website, setWebsite] = useState('');
-  const [yelpUrl, setYelpUrl] = useState('');
-  const [googleUrl, setGoogleUrl] = useState('');
-  const [menuUrl, setMenuUrl] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
-  const [photos, setPhotos] = useState<string[]>([]);
-  const [priceLevel, setPriceLevel] = useState('');
-  const [externalRating, setExternalRating] = useState<number | null>(null);
-  const [selectedCuisines, setSelectedCuisines] = useState<string[]>([]);
+  const [name, setName] = usePersistentState('addRestaurant:name', '');
+  const [address, setAddress] = usePersistentState('addRestaurant:address', '');
+  const [city, setCity] = usePersistentState('addRestaurant:city', '');
+  const [state, setState] = usePersistentState('addRestaurant:state', '');
+  const [phone, setPhone] = usePersistentState('addRestaurant:phone', '');
+  const [website, setWebsite] = usePersistentState('addRestaurant:website', '');
+  const [yelpUrl, setYelpUrl] = usePersistentState('addRestaurant:yelpUrl', '');
+  const [googleUrl, setGoogleUrl] = usePersistentState('addRestaurant:googleUrl', '');
+  const [menuUrl, setMenuUrl] = usePersistentState('addRestaurant:menuUrl', '');
+  const [imageUrl, setImageUrl] = usePersistentState('addRestaurant:imageUrl', '');
+  const [photos, setPhotos] = usePersistentState<string[]>('addRestaurant:photos', []);
+  const [priceLevel, setPriceLevel] = usePersistentState('addRestaurant:priceLevel', '');
+  const [externalRating, setExternalRating] = usePersistentState<number | null>('addRestaurant:externalRating', null);
+  const [selectedCuisines, setSelectedCuisines] = usePersistentState<string[]>('addRestaurant:selectedCuisines', []);
   const [newCuisine, setNewCuisine] = useState('');
-  const [selectedLists, setSelectedLists] = useState<string[]>(['My Restaurants']);
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
+  const [selectedLists, setSelectedLists] = usePersistentState<string[]>('addRestaurant:selectedLists', ['My Restaurants']);
+  const [latitude, setLatitude] = usePersistentState<number | null>('addRestaurant:latitude', null);
+  const [longitude, setLongitude] = usePersistentState<number | null>('addRestaurant:longitude', null);
   const [saving, setSaving] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [showNewList, setShowNewList] = useState(false);
@@ -154,8 +157,10 @@ export function AddRestaurantPage() {
   useEffect(() => {
     detectLocation().then((loc) => {
       if (!loc) return;
-      setLatitude(loc.lat);
-      setLongitude(loc.lng);
+      // Only a starting point: never replace the coordinates of a restaurant
+      // already picked (or restored), which this fix can land after.
+      setLatitude((prev) => prev ?? loc.lat);
+      setLongitude((prev) => prev ?? loc.lng);
       if (loc.city && !searchLocation) setSearchLocation(loc.city);
       if (loc.city && !city) setCity(loc.city);
       if (loc.state && !state) setState(loc.state);
@@ -239,6 +244,7 @@ export function AddRestaurantPage() {
         cuisine_tags: selectedCuisines, lists: selectedLists,
         is_favorite: false, latitude, longitude,
       });
+      clearPersistentState('addRestaurant:');
       navigate(`/restaurant/${added.id}`);
     } catch (err) {
       console.error('Failed to add restaurant', err);

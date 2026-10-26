@@ -178,7 +178,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setImportProgress({ total: items.length, done: 0, restaurantName, status: 'running', currentDishName: items[0]?.name });
       let added = 0;
       try {
-        added = (await api.addDishes(items)).length;
+        const saved = await api.addDishes(items);
+        added = saved.length;
+        // Paint them straight away: the restaurant page shows its cached list
+        // first, so this is what makes them appear without a second fetch.
+        const restaurantId = items[0].restaurant_id;
+        if (restaurantId) {
+          setCached(`dishes:${restaurantId}`, [...saved, ...(getCached<Dish[]>(`dishes:${restaurantId}`) ?? [])]);
+        }
       } catch (err) {
         console.error('Background import failed:', err);
       }
