@@ -393,9 +393,12 @@ async function requireAuth(req: Request): Promise<Response | null> {
 // DoorDash and the like usually have it in full.
 const WEB_SEARCH_BELOW = 15;
 
+// Models for the web lookup, most preferred first.
+const WEB_SEARCH_MODELS = ['gpt-5-mini', 'gpt-5', 'gpt-4.1', 'gpt-4o'];
+
 // Which of the caller's restaurants this link belongs to. Runs as the caller,
 // so row-level security limits it to their own restaurants.
-async function findRestaurant(authHeader: string, url: string): Promise<{ name: string; city: string; state: string; address: string } | null> {
+async function findRestaurant(authHeader: string, url: string, trace: string[]): Promise<{ name: string; city: string; state: string; address: string } | null> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const headers = { Authorization: authHeader, apikey: Deno.env.get('SUPABASE_ANON_KEY') ?? '' };
   for (const column of ['website', 'menu_url']) {
@@ -405,11 +408,14 @@ async function findRestaurant(authHeader: string, url: string): Promise<{ name: 
         { headers },
       );
       const rows = res.ok ? await res.json() : [];
+      if (!res.ok) trace.push(`restaurant lookup by ${column}: HTTP ${res.status}`);
       if (rows[0]?.name) return rows[0];
-    } catch {
+    } catch (err) {
       // the lookup only enables the web search; carry on without it
+      trace.push(`restaurant lookup by ${column}: ${err}`);
     }
   }
+  trace.push('no saved restaurant has this link, so no web lookup');
   return null;
 }
 
@@ -419,39 +425,69 @@ async function searchMenuOnWeb(
   apiKey: string,
   restaurant: { name: string; city: string; state: string; address: string },
   url: string,
+  trace: string[],
 ): Promise<{ name: string; dish_type: string }[]> {
   const where = [restaurant.address, restaurant.city, restaurant.state].filter(Boolean).join(', ');
+  const prompt = `Find the full current menu of the restaurant "${restaurant.name}"${where ? ` at ${where}` : ''} (website: ${url}). Search its own site and menu listings such as Yelp, DoorDash, Uber Eats, Grubhub, Allmenus and MenuPages. Make sure it is this exact location, not another restaurant with a similar name. List every dish and drink on the menu. Respond with the JSON object only.`;
+  // Measured: a full menu search takes about a minute. This still leaves the
+  // whole request inside the function's ~150 s limit (the site read runs
+  // alongside and takes seconds).
+  const deadline = AbortSignal.timeout(110000);
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gpt-4o-search-preview',
-        web_search_options: {},
-        max_tokens: 16000,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: `Find the full current menu of the restaurant "${restaurant.name}"${where ? ` at ${where}` : ''} (website: ${url}). Search its own site and menu listings such as Yelp, DoorDash, Uber Eats, Grubhub, Allmenus and MenuPages. Make sure it is this exact location, not another restaurant with a similar name. List every dish and drink on the menu. Respond with the JSON object only.`,
-          },
-        ],
-      }),
-      // Leaves the whole request well inside the function's time limit.
-      signal: AbortSignal.timeout(60000),
-    });
-    if (!res.ok) {
-      console.log(JSON.stringify({ web_search_error: res.status, body: (await res.text()).slice(0, 300) }));
-      return [];
+    // Web search goes through the Responses API's web_search tool (the
+    // chat-completions search model this first used has been retired). The
+    // first model here that the account can use answers; a retired or
+    // unavailable one fails fast and the next is tried.
+    let content = '';
+    const started = Date.now();
+    for (const model of WEB_SEARCH_MODELS) {
+      trace.push(`web search: trying ${model}`);
+      const res = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          tools: [{ type: 'web_search' }],
+          instructions: SYSTEM_PROMPT,
+          input: prompt,
+          max_output_tokens: 16000,
+          // Finding and copying out a menu needs little reasoning; at the
+          // default effort the search alone ran past a minute.
+          ...(model.startsWith('gpt-5') ? { reasoning: { effort: 'low' } } : {}),
+        }),
+        signal: deadline,
+      });
+      if (!res.ok) {
+        trace.push(`web search (${model}): HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+        if (res.status === 400 || res.status === 403 || res.status === 404) continue;
+        return [];
+      }
+      const data = await res.json();
+      content = data.output_text ??
+        (data.output ?? [])
+          .flatMap((item: { content?: { type: string; text?: string }[] }) => item.content ?? [])
+          .filter((part: { type: string }) => part.type === 'output_text')
+          .map((part: { text?: string }) => part.text ?? '')
+          .join('');
+      trace.push(`web search answered by ${model} in ${Math.round((Date.now() - started) / 1000)}s`);
+      break;
     }
-    const data = await res.json();
-    const content: string = data.choices?.[0]?.message?.content ?? '';
+    if (!content) return [];
     // No JSON mode on search models: take the outermost object in the reply.
     const json = content.slice(content.indexOf('{'), content.lastIndexOf('}') + 1);
-    const dishes = JSON.parse(json).dishes;
-    return Array.isArray(dishes) ? dishes.filter((d) => typeof d?.name === 'string') : [];
+    let dishes: unknown;
+    try {
+      dishes = JSON.parse(json).dishes;
+    } catch {
+      trace.push(`web search: unparseable reply: ${content.slice(0, 300)}`);
+      return [];
+    }
+    const valid = Array.isArray(dishes) ? dishes.filter((d) => typeof d?.name === 'string') : [];
+    trace.push(`web search: ${valid.length} dishes`);
+    if (valid.length === 0) trace.push(`web search reply: ${content.slice(0, 400)}`);
+    return valid;
   } catch (err) {
-    console.log(JSON.stringify({ web_search_error: String(err) }));
+    trace.push(`web search: ${err}`);
     return [];
   }
 }
@@ -465,7 +501,10 @@ serve(async (req) => {
   if (authErr) return authErr;
 
   try {
-    const { url } = await req.json();
+    const { url, debug } = await req.json();
+    // Why the web lookup did or didn't add anything; returned when `debug` is
+    // set, since the function's logs aren't reachable from where it's tested.
+    const trace: string[] = [];
     if (!url) throw new Error('URL is required');
 
     if (!isAllowedUrl(url)) {
@@ -482,8 +521,8 @@ serve(async (req) => {
     // after the other could outlast the function's time limit, which reached
     // the app as an error and saved nothing. Its answer is only used if the
     // site comes back short.
-    const webLookup = findRestaurant(req.headers.get('Authorization') ?? '', url)
-      .then((restaurant) => (restaurant ? searchMenuOnWeb(apiKey, restaurant, url).then((dishes) => ({ restaurant, dishes })) : null));
+    const webLookup = findRestaurant(req.headers.get('Authorization') ?? '', url, trace)
+      .then((restaurant) => (restaurant ? searchMenuOnWeb(apiKey, restaurant, url, trace).then((dishes) => ({ restaurant, dishes })) : null));
 
     // Fetch the URL, then follow it to the real menu when it turns out to be a
     // homepage that merely links to one.
@@ -667,6 +706,8 @@ The page content could not be fetched. Based on your knowledge of this restauran
         parsed.note = "We couldn't find a menu on that page. Try pasting a link straight to the menu, or use Scan to photograph it.";
       }
     }
+
+    if (debug) parsed.debug = { trace, sources: sources.map((s) => `${s.kind} ${s.url}`) };
 
     return new Response(
       JSON.stringify(parsed),
