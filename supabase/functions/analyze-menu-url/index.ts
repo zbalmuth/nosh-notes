@@ -196,6 +196,22 @@ async function loadSource(url: string): Promise<Source | null> {
   return { kind: 'html', url: finalUrl, html };
 }
 
+// Menus a page keeps as data in its own scripts — `const menuData = [{
+// category: "Appetizers", items: [{name: "Samosa", price: "$6"}, ...]}]` —
+// and draws (as tabs, sliders) in the browser. stripHtml drops every script,
+// which threw New Delhi Palace's whole ~110-item menu away and left the 8 dish
+// names in its homepage copy. A script counts as menu data when it holds many
+// name fields alongside prices or categories.
+function menuDataScripts(html: string): string {
+  const found: string[] = [];
+  for (const [, body] of html.matchAll(/<script\b(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/gi)) {
+    const names = (body.match(/["']?\b(?:name|title|item_name|dish)["']?\s*:/gi) || []).length;
+    const menuish = /["']?\b(?:price|prices|category|categories|menu|items)["']?\s*:/i.test(body);
+    if (names >= 8 && menuish) found.push(body.trim());
+  }
+  return found.join('\n\n').slice(0, 60000);
+}
+
 function stripHtml(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
@@ -321,8 +337,10 @@ async function resolveBestSources(source: Source): Promise<Source[]> {
   const ownText = stripHtml(source.html);
   const ownScore = menuScore(ownText);
   // A page at /menu with any menu text, or any page with real prices on it.
-  const ownIsMenu = ownText.length >= 900 &&
-    ((isMenuish(new URL(source.url).pathname) && ownScore > 0) || ownScore >= 6);
+  const ownIsMenu = (ownText.length >= 900 &&
+    ((isMenuish(new URL(source.url).pathname) && ownScore > 0) || ownScore >= 6)) ||
+    // the whole menu kept as script data, drawn as tabs in the browser
+    menuDataScripts(source.html) !== '';
   if (ownIsMenu) found.push(source);
 
   // Embedded files: a page that embeds its menu usually has nothing in its
@@ -388,10 +406,11 @@ async function requireAuth(req: Request): Promise<Response | null> {
 }
 
 // Fewer dishes than this from the site itself and we also look the menu up on
-// the web. Restaurant sites that keep their menu out of reach (ordering
-// widgets, script-built pages, photos) are common; menu listings on Yelp,
-// DoorDash and the like usually have it in full.
-const WEB_SEARCH_BELOW = 15;
+// the web and merge it in. Restaurant sites often list only part of the menu
+// (New Delhi Palace's has 51; its DoorDash/Uber Eats listings ~120), or keep it
+// out of reach entirely; menu listings around the web usually have it in full.
+// A site with a full menu of its own (Open Sesame: 127) is left as it is.
+const WEB_SEARCH_BELOW = 60;
 
 // Where each parallel web lookup looks. Two measured best: a third (ordering
 // pages, smaller menu sites) found no more and pushed requests near the limit.
@@ -594,6 +613,11 @@ serve(async (req) => {
           } catch {
             // malformed JSON-LD is common; the page text still has the menu
           }
+        }
+        const scriptMenu = menuDataScripts(page.html);
+        if (scriptMenu) {
+          structured += scriptMenu + '\n';
+          trace.push(`menu data in page script: ${scriptMenu.length} chars`);
         }
         const text = stripHtml(page.html).slice(0, Math.floor(MAX_PAGE_TEXT / htmlSources.length));
         return { url: page.url, text, structured };
