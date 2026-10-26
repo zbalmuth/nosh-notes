@@ -116,8 +116,9 @@ export function AddDishPage() {
   // Set when the list on screen came from the saved menu rather than a fresh
   // scan, so we can label it and offer a rescan.
   const [menuScannedAt, setMenuScannedAt] = useState<string | null>(null);
-  // The link box above an existing list, for trying another page of the menu.
-  const [linkOpen, setLinkOpen] = useState(false);
+  // The "Update menu" panel above an existing list: its three choices, or the
+  // link box once "Use a different link" is picked.
+  const [menuAction, setMenuAction] = useState<null | 'choose' | 'link'>(null);
 
   // ─── Scan handlers ──────────────────────────────────────────────────────────
 
@@ -255,7 +256,9 @@ export function AddDishPage() {
     if (fallback) setMenuUrl(fallback);
   }, [restaurant, menuUrl]);
 
-  const handleAnalyzeUrl = async () => {
+  // `fresh: true` is "Start over": the list is replaced by whatever this scan
+  // finds. Otherwise new dishes are added to the list already on screen.
+  const handleAnalyzeUrl = async ({ fresh: startOver = false }: { fresh?: boolean } = {}) => {
     if (!menuUrl.trim() || !restaurantId) return;
     const trimmedUrl = menuUrl.trim();
     if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
@@ -277,12 +280,13 @@ export function AddDishPage() {
       // split across pages (lunch, dinner, drinks), and a second link that
       // finds less shouldn't throw away what the first one found. Your picks
       // on dishes already listed are kept.
-      const known = new Set(urlDishes.map((d) => normalizeName(d.name)));
+      const base = startOver ? [] : urlDishes;
+      const known = new Set(base.map((d) => normalizeName(d.name)));
       const fresh = found.filter((d) => !known.has(normalizeName(d.name)));
-      const merged = [...urlDishes, ...toScannedDishes(fresh, existingDishes)];
+      const merged = [...base, ...toScannedDishes(fresh, existingDishes)];
       setUrlDishes(merged);
-      setLinkOpen(false);
-      if (urlDishes.length > 0) {
+      setMenuAction(null);
+      if (base.length > 0) {
         setUrlNote('');
         showToast(fresh.length > 0
           ? `Added ${fresh.length} more dish${fresh.length !== 1 ? 'es' : ''}`
@@ -772,7 +776,7 @@ export function AddDishPage() {
                   className="btn btn-primary"
                   style={{ padding: '12px 22px', whiteSpace: 'nowrap' }}
                   disabled={urlLoading || !menuUrl.trim()}
-                  onClick={handleAnalyzeUrl}
+                  onClick={() => handleAnalyzeUrl()}
                 >
                   {urlLoading ? <Loader size={18} className="spin" /> : 'Import'}
                 </button>
@@ -807,7 +811,10 @@ export function AddDishPage() {
           {urlLoading && (
             <div style={{ textAlign: 'center', padding: '40px 0' }}>
               <div className="loading-spinner" />
-              <p style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 12 }}>Analyzing menu...</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 12 }}>Reading the menu…</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
+                Checks the restaurant's site and menu listings online — can take up to a minute.
+              </p>
             </div>
           )}
 
@@ -828,14 +835,32 @@ export function AddDishPage() {
                     {menuScannedAt && ` · scanned ${new Date(menuScannedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`}
                   </p>
                 </div>
-                <button className="menu-rescan" onClick={() => setLinkOpen((open) => !open)}>
-                  <RefreshCw size={12} /> {linkOpen ? 'Close' : 'Another link'}
+                <button className="menu-rescan" onClick={() => setMenuAction((a) => (a ? null : 'choose'))}>
+                  <RefreshCw size={12} /> {menuAction ? 'Close' : 'Update menu'}
                 </button>
               </div>
 
-              {/* Missing dishes? Point it at another page of the menu (or the
-                  same one again); whatever it finds is added below. */}
-              {linkOpen && (
+              {/* Every way to change the list, in one place */}
+              {menuAction === 'choose' && (
+                <div className="menu-actions">
+                  <button onClick={() => handleAnalyzeUrl()} disabled={!menuUrl.trim()}>
+                    <strong>Scan again</strong>
+                    <span>Re-read the menu and add anything that's missing</span>
+                  </button>
+                  <button onClick={() => setMenuAction('link')}>
+                    <strong>Use a different link</strong>
+                    <span>Paste the menu page or a PDF — new dishes are added</span>
+                  </button>
+                  <button onClick={() => handleAnalyzeUrl({ fresh: true })} disabled={!menuUrl.trim()}>
+                    <strong>Start over</strong>
+                    <span>Throw this list away and scan from scratch</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Missing dishes? Point it at another page of the menu; whatever
+                  it finds is added below. */}
+              {menuAction === 'link' && (
                 <div style={{ marginBottom: 14 }}>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <input
@@ -853,7 +878,7 @@ export function AddDishPage() {
                       className="btn btn-primary"
                       style={{ padding: '12px 18px', whiteSpace: 'nowrap' }}
                       disabled={urlLoading || !menuUrl.trim()}
-                      onClick={handleAnalyzeUrl}
+                      onClick={() => handleAnalyzeUrl()}
                     >
                       Import
                     </button>
@@ -868,15 +893,8 @@ export function AddDishPage() {
 
               <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
                 <button
-                  className="btn btn-secondary"
-                  style={{ flex: 1 }}
-                  onClick={() => { setUrlDishes([]); setMenuUrl(''); setUrlNote(''); setMenuScannedAt(null); }}
-                >
-                  Clear
-                </button>
-                <button
                   className="btn btn-primary"
-                  style={{ flex: 2 }}
+                  style={{ flex: 1 }}
                   disabled={urlDishes.every((d) => d.action === 'ignore')}
                   onClick={handleSaveUrl}
                 >

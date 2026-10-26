@@ -437,7 +437,8 @@ async function searchMenuOnWeb(
           },
         ],
       }),
-      signal: AbortSignal.timeout(90000),
+      // Leaves the whole request well inside the function's time limit.
+      signal: AbortSignal.timeout(60000),
     });
     if (!res.ok) {
       console.log(JSON.stringify({ web_search_error: res.status, body: (await res.text()).slice(0, 300) }));
@@ -476,6 +477,13 @@ serve(async (req) => {
 
     const apiKey = Deno.env.get('OPENAI_API_KEY');
     if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
+
+    // The web lookup runs alongside reading the site rather than after it: one
+    // after the other could outlast the function's time limit, which reached
+    // the app as an error and saved nothing. Its answer is only used if the
+    // site comes back short.
+    const webLookup = findRestaurant(req.headers.get('Authorization') ?? '', url)
+      .then((restaurant) => (restaurant ? searchMenuOnWeb(apiKey, restaurant, url).then((dishes) => ({ restaurant, dishes })) : null));
 
     // Fetch the URL, then follow it to the real menu when it turns out to be a
     // homepage that merely links to one.
@@ -617,12 +625,11 @@ The page content could not be fetched. Based on your knowledge of this restauran
 
     // The site gave little or nothing: look the menu up on the web as well.
     if (parsed.dishes.length < WEB_SEARCH_BELOW) {
-      const restaurant = await findRestaurant(req.headers.get('Authorization') ?? '', url);
-      if (restaurant) {
-        const fromWeb = await searchMenuOnWeb(apiKey, restaurant, url);
-        console.log(JSON.stringify({ web_search: restaurant.name, site_dishes: parsed.dishes.length, web_dishes: fromWeb.length }));
-        if (fromWeb.length > 0) {
-          parsed.dishes = [...parsed.dishes, ...fromWeb];
+      const web = await webLookup;
+      if (web) {
+        console.log(JSON.stringify({ web_search: web.restaurant.name, site_dishes: parsed.dishes.length, web_dishes: web.dishes.length }));
+        if (web.dishes.length > 0) {
+          parsed.dishes = [...parsed.dishes, ...web.dishes];
           parsed.note = '';
         }
       }
