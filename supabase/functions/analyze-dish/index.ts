@@ -64,7 +64,9 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        // gpt-4o-mini read receipts fine but skipped matches to saved dishes
+        // now and then ("GRLC NAAN" left unmatched one run in two).
+        model: 'gpt-4o',
         messages: [
           {
             role: 'system',
@@ -84,7 +86,7 @@ If no food items are visible, respond: {"dishes": []}${knownNames.length ? `
 KNOWN DISHES at this restaurant (already saved, or on its menu):
 ${knownNames.map((n) => `- ${n}`).join('\n')}
 
-Receipts abbreviate and truncate names. When an item is the same dish as one in KNOWN DISHES, use that dish's exact name as "name" and also set "matches" to it: {"name": "Chicken Tikka Masala", "dish_type": "entree", "matches": "Chicken Tikka Masala"}. Only match when it is clearly the same dish — "Samosa" is not "Samosa Chaat", and "Lamb Curry" is not "Chicken Curry". Otherwise leave "matches" out.` : ''}`,
+Receipts abbreviate and truncate names ("CHK TKA MSL", "PNR MAKHANI"). EVERY item must include a "matches" field: the exact text of the KNOWN DISHES entry it is the same dish as, copied character for character (keep its spelling and capitals even if they differ from yours), or null if none is. When there is a match, also use that same text as "name". Example: {"name": "PANEER MAKKHANI", "dish_type": "entree", "matches": "PANEER MAKKHANI"}. Only match when it is clearly the same dish — "Samosa" is not "Samosa Chaat", and "Lamb Curry" is not "Chicken Curry".` : ''}`,
           },
           {
             role: 'user',
@@ -104,6 +106,7 @@ Receipts abbreviate and truncate names. When an item is the same dish as one in 
         ],
         max_tokens: 1500,
         temperature: 0.1,
+        response_format: { type: 'json_object' },
       }),
     });
 
@@ -116,6 +119,18 @@ Receipts abbreviate and truncate names. When an item is the same dish as one in 
       parsed = JSON.parse(jsonStr);
     } catch {
       parsed = { dishes: [] };
+    }
+
+    // A matched line goes back under the known dish's own name ("CHK TKA MSL"
+    // → "Chicken Tikka Masala"). The model finds the match reliably but often
+    // leaves the receipt's text as the name; a match it invented is dropped.
+    if (Array.isArray(parsed.dishes) && knownNames.length) {
+      const byKey = new Map(knownNames.map((n) => [n.toLowerCase().trim(), n]));
+      parsed.dishes = parsed.dishes.map((d: { name: string; dish_type: string; matches?: string | null }) => {
+        const known = typeof d.matches === 'string' ? byKey.get(d.matches.toLowerCase().trim()) : undefined;
+        const { matches: _ignored, ...rest } = d;
+        return known ? { ...rest, name: known, matches: known } : rest;
+      });
     }
 
     return new Response(
