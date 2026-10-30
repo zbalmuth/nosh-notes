@@ -151,19 +151,47 @@ export function AddDishPage() {
 
   // ─── Scan handlers ──────────────────────────────────────────────────────────
 
+  // Picking photos only lines them up: each can be removed (✕) and more
+  // added before anything is sent, and the scan starts on "Scan". A scan in
+  // progress can be cancelled; whatever it was still waiting on is ignored.
+  const handleScanCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    const read = await Promise.all(files.map((file) => new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => resolve((ev.target?.result as string) ?? null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    })));
+    const photos = read.filter((x): x is string => !!x);
+    if (photos.length < files.length) showToast(`${files.length - photos.length} photo(s) couldn't be opened`);
+    setScanPhotos((prev) => [...prev, ...photos]);
+  };
+
+  const removeScanPhoto = (index: number) => setScanPhotos((prev) => prev.filter((_, i) => i !== index));
+
+  // Bumped by every scan and every cancel; a scan whose number is no longer
+  // current has been cancelled and drops its results.
+  const runRef = useRef(0);
+
+  const cancelScan = () => {
+    runRef.current++;
+    setAnalyzing(false);
+    setAnalyzeStatus('');
+  };
+
   // Several photos at once (a stack of receipts, a menu's pages): each is read
   // on its own, three at a time, and the dishes merged into one list — a dish
   // on two receipts is one row. A photo that can't be read is skipped and
   // counted rather than failing the rest.
-  const handleScanCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    e.target.value = '';
-    if (files.length === 0) return;
+  const startScan = async () => {
+    const photos = scanPhotos;
+    if (photos.length === 0) return;
+    const run = ++runRef.current;
 
     setAnalyzing(true);
-    setAnalyzeStatus(files.length > 1 ? `Reading ${files.length} photos...` : 'Reading image...');
+    setAnalyzeStatus(photos.length > 1 ? `Reading ${photos.length} photos...` : 'Reading image...');
     setScannedDishes([]);
-    setScanPhotos([]);
 
     try {
       // What's already saved here, and the saved menu, go along with each
@@ -174,14 +202,7 @@ export function AddDishPage() {
         : [[] as Dish[], null];
       const known = [...new Set([...existingDishes.map((d) => d.name), ...(savedMenu?.items ?? []).map((i) => i.name)])];
 
-      const readPhoto = async (file: File) => {
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (ev) => (ev.target?.result ? resolve(ev.target.result as string) : reject(new Error('Failed to read file')));
-          reader.onerror = () => reject(new Error('Failed to read file'));
-          reader.readAsDataURL(file);
-        });
-        setScanPhotos((prev) => [...prev, dataUrl]);
+      const readPhoto = async (dataUrl: string) => {
         const result = await analyzeDishImage(await compressImage(dataUrl, 800, 0.70), known);
         return result.dishes ?? [];
       };
@@ -189,20 +210,21 @@ export function AddDishPage() {
       let done = 0;
       let failed = 0;
       const found: Awaited<ReturnType<typeof readPhoto>> = [];
-      const queue = [...files];
-      await Promise.all(Array.from({ length: Math.min(3, files.length) }, async () => {
-        for (let file = queue.shift(); file; file = queue.shift()) {
+      const queue = [...photos];
+      await Promise.all(Array.from({ length: Math.min(3, photos.length) }, async () => {
+        for (let photo = queue.shift(); photo && runRef.current === run; photo = queue.shift()) {
           try {
-            found.push(...await readPhoto(file));
+            found.push(...await readPhoto(photo));
           } catch (err) {
             console.error('Scan failed for one photo:', err);
             failed++;
           }
           done++;
-          if (files.length > 1) setAnalyzeStatus(`Reading photos... ${done} of ${files.length} done`);
+          if (photos.length > 1 && runRef.current === run) setAnalyzeStatus(`Reading photos... ${done} of ${photos.length} done`);
         }
       }));
 
+      if (runRef.current !== run) return; // cancelled
       setAnalyzeStatus('Processing results...');
 
       const seen = new Set<string>();
@@ -230,19 +252,22 @@ export function AddDishPage() {
       const skipped = failed > 0 ? ` (${failed} photo${failed > 1 ? 's' : ''} couldn't be read)` : '';
       if (dishes.length > 0) {
         setScannedDishes(dishes);
-        const from = files.length > 1 ? ` in ${files.length - failed} photos` : '';
+        const from = photos.length > 1 ? ` in ${photos.length - failed} photos` : '';
         showToast(`Found ${dishes.length} dish${dishes.length > 1 ? 'es' : ''}${from}!${skipped}`);
-      } else if (failed === files.length) {
-        showToast(`Analysis failed${files.length > 1 ? ' for every photo' : ''}. Try again.`);
+      } else if (failed === photos.length) {
+        showToast(`Analysis failed${photos.length > 1 ? ' for every photo' : ''}. Try again.`);
       } else {
         showToast(`No dishes detected. Try a clearer photo.${skipped}`);
       }
     } catch (err) {
+      if (runRef.current !== run) return;
       console.error('Scan failed:', err);
       showToast(`Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
-      setAnalyzing(false);
-      setAnalyzeStatus('');
+      if (runRef.current === run) {
+        setAnalyzing(false);
+        setAnalyzeStatus('');
+      }
     }
   };
 
@@ -734,7 +759,7 @@ export function AddDishPage() {
             style={{ display: 'none' }}
           />
 
-          {scannedDishes.length === 0 && !analyzing && (
+          {scannedDishes.length === 0 && !analyzing && scanPhotos.length === 0 && (
             <div style={{ textAlign: 'center', padding: '30px 0' }}>
               <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 14 }}>
                 Take a photo of a menu, receipt, or dish to auto-detect items — or pick several at once
@@ -759,22 +784,44 @@ export function AddDishPage() {
               <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
                 {analyzeStatus || 'Please wait...'}
               </p>
+              <button className="btn btn-secondary" style={{ marginTop: 18, padding: '10px 28px' }} onClick={cancelScan}>
+                Cancel
+              </button>
             </div>
           )}
 
-          {scanPhotos.length === 1 && (
-            <div className="form-group">
-              <div style={{ position: 'relative', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: 12 }}>
-                <img src={scanPhotos[0]} alt="Scan" style={{ width: '100%', maxHeight: 200, objectFit: 'cover' }} />
-              </div>
-            </div>
-          )}
-          {scanPhotos.length > 1 && (
-            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 12 }}>
+          {/* The photos: lined up (removable, more can be added) until the
+              scan starts, then a strip above the results. */}
+          {scanPhotos.length > 0 && (
+            <div className="scan-photos">
               {scanPhotos.map((src, i) => (
-                <img key={i} src={src} alt={`Scan ${i + 1}`} style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 10, flexShrink: 0 }} />
+                <div key={i} className="scan-photo">
+                  <img src={src} alt={`Photo ${i + 1}`} />
+                  {!analyzing && scannedDishes.length === 0 && (
+                    <button aria-label={`Remove photo ${i + 1}`} onClick={() => removeScanPhoto(i)}>
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
+          )}
+
+          {scanPhotos.length > 0 && !analyzing && scannedDishes.length === 0 && (
+            <>
+              <button className="btn btn-secondary" style={{ width: '100%', marginBottom: 10 }} onClick={() => scanFileRef.current?.click()}>
+                + Add more photos
+              </button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setScanPhotos([])}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary" style={{ flex: 2 }} onClick={startScan}>
+                  <Sparkles size={16} style={{ marginRight: 6, verticalAlign: -3 }} />
+                  {`Scan ${scanPhotos.length} photo${scanPhotos.length !== 1 ? 's' : ''}`}
+                </button>
+              </div>
+            </>
           )}
 
           {scannedDishes.length > 0 && !analyzing && (
@@ -805,10 +852,9 @@ export function AddDishPage() {
                   onClick={() => {
                     setScannedDishes([]);
                     setScanPhotos([]);
-                    setTimeout(() => scanFileRef.current?.click(), 100);
                   }}
                 >
-                  Rescan
+                  Start over
                 </button>
                 <button
                   className="btn btn-primary"
