@@ -71,3 +71,14 @@ export default defineConfig([
   },
 ])
 ```
+
+## Shipping to TestFlight
+
+Codemagic builds the iOS app and uploads it to TestFlight when the `release`
+branch is pushed; pushes to `master` don't build. To ship what's on master:
+
+    git push origin master:release
+
+A build can also be started by hand in Codemagic. The build number is the UTC
+time of the build (`yymmdd.HHMM`), and the version shown at the bottom of
+Settings is the commit it was built from.
