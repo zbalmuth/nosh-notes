@@ -126,7 +126,7 @@ export function AddDishPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeStatus, setAnalyzeStatus] = useState('');
   const [scannedDishes, setScannedDishes] = usePersistentState<ScannedDish[]>(draft + 'scanned', []);
-  const [scanPhoto, setScanPhoto] = useState<string | null>(null);
+  const [scanPhotos, setScanPhotos] = useState<string[]>([]);
 
   // Picking from the restaurant's own menu is the fast path, so it leads;
   // typing a dish in by hand is the fallback for when that finds nothing.
@@ -151,68 +151,91 @@ export function AddDishPage() {
 
   // ─── Scan handlers ──────────────────────────────────────────────────────────
 
+  // Several photos at once (a stack of receipts, a menu's pages): each is read
+  // on its own, three at a time, and the dishes merged into one list — a dish
+  // on two receipts is one row. A photo that can't be read is skipped and
+  // counted rather than failing the rest.
   const handleScanCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (files.length === 0) return;
 
     setAnalyzing(true);
-    setAnalyzeStatus('Reading image...');
+    setAnalyzeStatus(files.length > 1 ? `Reading ${files.length} photos...` : 'Reading image...');
     setScannedDishes([]);
+    setScanPhotos([]);
 
     try {
-      // Read file as data URL
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          if (ev.target?.result) {
-            setScanPhoto(ev.target.result as string);
-            resolve(ev.target.result as string);
-          } else {
-            reject(new Error('Failed to read file'));
-          }
-        };
-        reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsDataURL(file);
-      });
-
-      setAnalyzeStatus('Compressing image...');
-      const compressedBase64 = await compressImage(dataUrl, 800, 0.70);
-
-      setAnalyzeStatus('Analyzing with AI...');
-
-      // What's already saved here, and the saved menu, go along with the photo:
-      // the model reads "CHK TKA MSL" off a receipt as the "Chicken Tikka
-      // Masala" you already have, which no name comparison here could.
+      // What's already saved here, and the saved menu, go along with each
+      // photo: the model reads "CHK TKA MSL" off a receipt as the "Chicken
+      // Tikka Masala" you already have, which no name comparison here could.
       const [existingDishes, savedMenu] = restaurantId
         ? await Promise.all([getDishes(restaurantId), getRestaurantMenu(restaurantId).catch(() => null)])
         : [[] as Dish[], null];
       const known = [...new Set([...existingDishes.map((d) => d.name), ...(savedMenu?.items ?? []).map((i) => i.name)])];
-      const result = await analyzeDishImage(compressedBase64, known);
+
+      const readPhoto = async (file: File) => {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => (ev.target?.result ? resolve(ev.target.result as string) : reject(new Error('Failed to read file')));
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.readAsDataURL(file);
+        });
+        setScanPhotos((prev) => [...prev, dataUrl]);
+        const result = await analyzeDishImage(await compressImage(dataUrl, 800, 0.70), known);
+        return result.dishes ?? [];
+      };
+
+      let done = 0;
+      let failed = 0;
+      const found: Awaited<ReturnType<typeof readPhoto>> = [];
+      const queue = [...files];
+      await Promise.all(Array.from({ length: Math.min(3, files.length) }, async () => {
+        for (let file = queue.shift(); file; file = queue.shift()) {
+          try {
+            found.push(...await readPhoto(file));
+          } catch (err) {
+            console.error('Scan failed for one photo:', err);
+            failed++;
+          }
+          done++;
+          if (files.length > 1) setAnalyzeStatus(`Reading photos... ${done} of ${files.length} done`);
+        }
+      }));
 
       setAnalyzeStatus('Processing results...');
 
-      if (result.dishes?.length > 0) {
-        setScannedDishes(
-          result.dishes.map((d) => {
-            // The model's match first (it can read abbreviations), then the
-            // name itself.
-            const saved = (d.matches && existingDishes.find((e) => normalizeName(e.name) === normalizeName(d.matches!))) ||
-              findDuplicate(d.name, existingDishes);
-            return {
-              name: d.name,
-              dish_type: normalizeDishType(saved?.dish_type ?? d.dish_type),
-              group: normalizeDishType(saved?.dish_type ?? d.dish_type),
-              action: 'ignore' as const,
-              rating: saved?.rating ?? 7,
-              notes: '',
-              duplicate: saved?.name,
-              existing: existingOf(saved),
-            };
-          })
-        );
-        showToast(`Found ${result.dishes.length} dish${result.dishes.length > 1 ? 'es' : ''}!`);
+      const seen = new Set<string>();
+      const dishes: ScannedDish[] = [];
+      for (const d of found) {
+        // The model's match first (it can read abbreviations), then the
+        // name itself.
+        const saved = (d.matches && existingDishes.find((ex) => normalizeName(ex.name) === normalizeName(d.matches!))) ||
+          findDuplicate(d.name, existingDishes);
+        const key = saved ? `saved:${saved.id}` : normalizeName(d.name);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        dishes.push({
+          name: d.name,
+          dish_type: normalizeDishType(saved?.dish_type ?? d.dish_type),
+          group: normalizeDishType(saved?.dish_type ?? d.dish_type),
+          action: 'ignore' as const,
+          rating: saved?.rating ?? 7,
+          notes: '',
+          duplicate: saved?.name,
+          existing: existingOf(saved),
+        });
+      }
+
+      const skipped = failed > 0 ? ` (${failed} photo${failed > 1 ? 's' : ''} couldn't be read)` : '';
+      if (dishes.length > 0) {
+        setScannedDishes(dishes);
+        const from = files.length > 1 ? ` in ${files.length - failed} photos` : '';
+        showToast(`Found ${dishes.length} dish${dishes.length > 1 ? 'es' : ''}${from}!${skipped}`);
+      } else if (failed === files.length) {
+        showToast(`Analysis failed${files.length > 1 ? ' for every photo' : ''}. Try again.`);
       } else {
-        showToast('No dishes detected. Try a clearer photo.');
+        showToast(`No dishes detected. Try a clearer photo.${skipped}`);
       }
     } catch (err) {
       console.error('Scan failed:', err);
@@ -221,8 +244,6 @@ export function AddDishPage() {
       setAnalyzing(false);
       setAnalyzeStatus('');
     }
-
-    e.target.value = '';
   };
 
   const updateScannedDish = (index: number, updates: Partial<ScannedDish>) => {
@@ -708,6 +729,7 @@ export function AddDishPage() {
             ref={scanFileRef}
             type="file"
             accept="image/*"
+            multiple
             onChange={handleScanCapture}
             style={{ display: 'none' }}
           />
@@ -715,7 +737,7 @@ export function AddDishPage() {
           {scannedDishes.length === 0 && !analyzing && (
             <div style={{ textAlign: 'center', padding: '30px 0' }}>
               <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 14 }}>
-                Take a photo of a menu, receipt, or dish to auto-detect items
+                Take a photo of a menu, receipt, or dish to auto-detect items — or pick several at once
               </p>
               <button
                 className="camera-btn"
@@ -723,7 +745,7 @@ export function AddDishPage() {
                 onClick={() => scanFileRef.current?.click()}
               >
                 <Camera size={22} />
-                Take Photo / Gallery / Files
+                Take Photo / Choose Photos
               </button>
             </div>
           )}
@@ -740,11 +762,18 @@ export function AddDishPage() {
             </div>
           )}
 
-          {scanPhoto && (
+          {scanPhotos.length === 1 && (
             <div className="form-group">
               <div style={{ position: 'relative', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: 12 }}>
-                <img src={scanPhoto} alt="Scan" style={{ width: '100%', maxHeight: 200, objectFit: 'cover' }} />
+                <img src={scanPhotos[0]} alt="Scan" style={{ width: '100%', maxHeight: 200, objectFit: 'cover' }} />
               </div>
+            </div>
+          )}
+          {scanPhotos.length > 1 && (
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 12 }}>
+              {scanPhotos.map((src, i) => (
+                <img key={i} src={src} alt={`Scan ${i + 1}`} style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 10, flexShrink: 0 }} />
+              ))}
             </div>
           )}
 
@@ -775,7 +804,7 @@ export function AddDishPage() {
                   style={{ flex: 1 }}
                   onClick={() => {
                     setScannedDishes([]);
-                    setScanPhoto(null);
+                    setScanPhotos([]);
                     setTimeout(() => scanFileRef.current?.click(), 100);
                   }}
                 >

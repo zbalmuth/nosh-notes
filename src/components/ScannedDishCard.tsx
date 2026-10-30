@@ -68,7 +68,7 @@ export function ScannedDishCard({
           {dish.duplicate && (
             <span className="menu-dup" title={`Already saved as “${dish.duplicate}”`}>
               <AlertCircle size={11} />
-              {saved?.rating != null ? `Saved · ${saved.rating.toFixed(1)}` : 'Saved'}
+              {saved?.want_to_try ? 'Want to try' : saved?.rating != null ? `Saved · ${saved.rating.toFixed(1)}` : 'Saved'}
             </span>
           )}
           <span className="menu-tick">
