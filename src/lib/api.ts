@@ -232,11 +232,13 @@ export async function getPlaceDetails(
 }
 
 // ─── AI Dish Recognition (via Edge Function proxy) ──────────────────────────
-export async function analyzeDishImage(imageBase64: string): Promise<{
-  dishes: { name: string; dish_type: string }[];
+// `known`: dish names already saved (or on the saved menu) at this
+// restaurant, so a receipt line can come back matched to one of them.
+export async function analyzeDishImage(imageBase64: string, known: string[] = []): Promise<{
+  dishes: { name: string; dish_type: string; matches?: string }[];
 }> {
   const { data, error } = await supabase.functions.invoke('analyze-dish', {
-    body: { image: imageBase64 },
+    body: { image: imageBase64, known },
   });
   if (error) throw error;
   return data;

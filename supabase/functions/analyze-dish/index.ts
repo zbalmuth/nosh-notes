@@ -40,7 +40,13 @@ serve(async (req) => {
   if (authErr) return authErr;
 
   try {
-    const { image } = await req.json();
+    const { image, known } = await req.json();
+    // Dishes already saved (or on the saved menu) at this restaurant. Receipts
+    // abbreviate ("CHK TKA MSL"), so the model is the one that can tell a line
+    // is a dish the person already has — and give its full name.
+    const knownNames: string[] = Array.isArray(known)
+      ? known.filter((n): n is string => typeof n === 'string' && n.length < 120).slice(0, 400)
+      : [];
     // Reject oversized payloads: 10 MB of base64 ≈ 7.5 MB raw — far larger than any reasonable photo.
     if (!image || typeof image !== 'string' || image.length > 10_000_000) {
       return new Response(
@@ -73,7 +79,12 @@ If the image shows a menu or receipt, extract every food line item. If it shows 
 Respond ONLY in this exact JSON format with no other text:
 {"dishes": [{"name": "Dish Name", "dish_type": "entree"}]}
 
-If no food items are visible, respond: {"dishes": []}`,
+If no food items are visible, respond: {"dishes": []}${knownNames.length ? `
+
+KNOWN DISHES at this restaurant (already saved, or on its menu):
+${knownNames.map((n) => `- ${n}`).join('\n')}
+
+Receipts abbreviate and truncate names. When an item is the same dish as one in KNOWN DISHES, use that dish's exact name as "name" and also set "matches" to it: {"name": "Chicken Tikka Masala", "dish_type": "entree", "matches": "Chicken Tikka Masala"}. Only match when it is clearly the same dish — "Samosa" is not "Samosa Chaat", and "Lamb Curry" is not "Chicken Curry". Otherwise leave "matches" out.` : ''}`,
           },
           {
             role: 'user',
@@ -91,7 +102,7 @@ If no food items are visible, respond: {"dishes": []}`,
             ],
           },
         ],
-        max_tokens: 600,
+        max_tokens: 1500,
         temperature: 0.1,
       }),
     });

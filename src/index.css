@@ -1171,3 +1171,10 @@ textarea.input {
   margin-bottom: 4px;
   background: var(--bg-primary);
 }
+
+/* "Already saved as …" above an imported dish's choices */
+.menu-saved-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}

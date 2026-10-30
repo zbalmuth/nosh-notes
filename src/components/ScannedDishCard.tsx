@@ -8,10 +8,13 @@ export interface ScannedDish {
   name: string;
   dish_type: string;
   group?: string; // course it was first listed under; fixed so the row doesn't jump
-  action: 'rate' | 'want_to_try' | 'ignore';
+  // 'update' changes the saved dish this one repeats instead of adding it again.
+  action: 'rate' | 'want_to_try' | 'ignore' | 'update';
   rating: number;
   notes: string;
   duplicate?: string; // name of a similar existing dish
+  // The saved dish this is the same as, when there is one.
+  existing?: { id: string; name: string; rating: number | null; want_to_try: boolean };
 }
 
 // One row of an imported menu.
@@ -35,6 +38,10 @@ export function ScannedDishCard({
   const [typeOpen, setTypeOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const selected = dish.action !== 'ignore';
+  const saved = dish.existing;
+  // A dish you've already saved is picked to update that one, not to add a
+  // second copy of it.
+  const pickAction = saved ? 'update' : defaultAction;
   const typeLabel = DISH_TYPES.find((t) => t.value === dish.dish_type)?.label;
 
   return (
@@ -55,13 +62,13 @@ export function ScannedDishCard({
         <button
           className="menu-item-head"
           aria-pressed={selected}
-          onClick={() => onUpdate({ action: selected ? 'ignore' : defaultAction })}
+          onClick={() => onUpdate({ action: selected ? 'ignore' : pickAction })}
         >
           <span className="menu-item-name">{dish.name}</span>
           {dish.duplicate && (
             <span className="menu-dup" title={`Already saved as “${dish.duplicate}”`}>
               <AlertCircle size={11} />
-              Saved
+              {saved?.rating != null ? `Saved · ${saved.rating.toFixed(1)}` : 'Saved'}
             </span>
           )}
           <span className="menu-tick">
@@ -72,6 +79,28 @@ export function ScannedDishCard({
 
       {selected && (
         <div className="menu-item-body">
+          {saved ? (
+            <>
+              <p className="menu-saved-note">
+                Already saved as “{saved.name}” —{' '}
+                {saved.want_to_try ? 'on your want-to-try list' : saved.rating != null ? `you rated it ${saved.rating.toFixed(1)}` : 'no rating yet'}
+              </p>
+              <div className="menu-seg">
+                <button
+                  className={dish.action === 'update' ? 'on' : ''}
+                  onClick={() => onUpdate({ action: 'update' })}
+                >
+                  Update saved one
+                </button>
+                <button
+                  className={dish.action === 'rate' ? 'on' : ''}
+                  onClick={() => onUpdate({ action: 'rate' })}
+                >
+                  Add as new
+                </button>
+              </div>
+            </>
+          ) : (
           <div className="menu-seg">
             <button
               className={dish.action === 'want_to_try' ? 'on want' : ''}
@@ -86,8 +115,9 @@ export function ScannedDishCard({
               Rate it
             </button>
           </div>
+          )}
 
-          {dish.action === 'rate' && (
+          {(dish.action === 'rate' || dish.action === 'update') && (
             <div>
               <div style={{ textAlign: 'center', marginBottom: 4 }}>
                 <span style={{

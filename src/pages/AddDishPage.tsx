@@ -8,6 +8,7 @@ import { ScannedDishList } from '../components/ScannedDishList';
 import type { ScannedDish } from '../components/ScannedDishCard';
 import { analyzeDishImage, analyzeMenuUrl, uploadPhoto, getRestaurantMenu, saveRestaurantMenu } from '../lib/api';
 import { resolveMenuUrl } from '../lib/menu';
+import { getCached, setCached } from '../lib/cache';
 import { usePersistentState, clearPersistentState } from '../hooks/usePersistentState';
 import { DISH_TYPES, getRatingLabel, getRatingColor, normalizeDishType } from '../types';
 import type { Dish, DishType } from '../types';
@@ -46,20 +47,48 @@ function normalizeName(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// Check if a new dish name is similar to an existing dish — returns the existing name if matched
-function findDuplicate(newName: string, existing: Dish[]): string | undefined {
-  const norm = normalizeName(newName);
-  for (const d of existing) {
-    const existingNorm = normalizeName(d.name);
-    if (
-      existingNorm === norm ||
-      existingNorm.includes(norm) ||
-      norm.includes(existingNorm)
-    ) {
-      return d.name;
+// The saved dish a new name is the same dish as, if any: the same name up to
+// case, punctuation, word order and plurals, or a slip of a letter or two in a
+// long name ("Paneer Makkhani" / "Paneer Makhani"). It used to accept either
+// name containing the other, which called a scanned "Samosa" a repeat of a
+// saved "Samosa Chaat" — fine for a "Saved" tag, wrong once a match offers to
+// overwrite that dish's rating.
+function findDuplicate(newName: string, existing: Dish[]): Dish | undefined {
+  const key = (s: string) => normalizeName(s).split(' ').map((w) => w.replace(/(es|s)$/, '')).sort().join(' ');
+  const target = key(newName);
+  if (!target) return undefined;
+  return existing.find((d) => {
+    const other = key(d.name);
+    return other === target || (target.length >= 8 && editDistance(other, target) <= 2);
+  });
+}
+
+function editDistance(a: string, b: string): number {
+  if (Math.abs(a.length - b.length) > 2) return 3;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
     }
+    prev = cur;
   }
-  return undefined;
+  return prev[b.length];
+}
+
+// What a list row needs to know about the saved dish it repeats.
+function existingOf(dish: Dish | undefined): ScannedDish['existing'] {
+  return dish && { id: dish.id, name: dish.name, rating: dish.rating, want_to_try: dish.want_to_try };
+}
+
+// "Add 3 dishes", "Update 2 dishes", or "Add 3 · update 2".
+function saveLabel(list: ScannedDish[]): string {
+  const updating = list.filter((d) => d.action === 'update' && d.existing).length;
+  const adding = list.filter((d) => d.action !== 'ignore').length - updating;
+  const n = (k: number) => `${k} dish${k !== 1 ? 'es' : ''}`;
+  if (updating === 0) return `Add ${n(adding)}`;
+  if (adding === 0) return `Update ${n(updating)}`;
+  return `Add ${adding} · update ${updating}`;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -67,7 +96,7 @@ function findDuplicate(newName: string, existing: Dish[]): string | undefined {
 export function AddDishPage() {
   const { restaurantId } = useParams<{ restaurantId: string }>();
   const navigate = useNavigate();
-  const { addDish, getDishes, restaurants, showToast, startBackgroundImport } = useApp();
+  const { addDish, getDishes, updateDish, restaurants, showToast, startBackgroundImport } = useApp();
   const scanFileRef = useRef<HTMLInputElement>(null);
   const photoFileRef = useRef<HTMLInputElement>(null);
   const photoTouchStartX = useRef(0);
@@ -151,25 +180,35 @@ export function AddDishPage() {
 
       setAnalyzeStatus('Analyzing with AI...');
 
-      // Fetch existing dishes and run analysis in parallel to save time
-      const [result, existingDishes] = await Promise.all([
-        analyzeDishImage(compressedBase64),
-        restaurantId ? getDishes(restaurantId) : Promise.resolve([]),
-      ]);
+      // What's already saved here, and the saved menu, go along with the photo:
+      // the model reads "CHK TKA MSL" off a receipt as the "Chicken Tikka
+      // Masala" you already have, which no name comparison here could.
+      const [existingDishes, savedMenu] = restaurantId
+        ? await Promise.all([getDishes(restaurantId), getRestaurantMenu(restaurantId).catch(() => null)])
+        : [[] as Dish[], null];
+      const known = [...new Set([...existingDishes.map((d) => d.name), ...(savedMenu?.items ?? []).map((i) => i.name)])];
+      const result = await analyzeDishImage(compressedBase64, known);
 
       setAnalyzeStatus('Processing results...');
 
       if (result.dishes?.length > 0) {
         setScannedDishes(
-          result.dishes.map((d: { name: string; dish_type: string }) => ({
-            name: d.name,
-            dish_type: normalizeDishType(d.dish_type),
-            group: normalizeDishType(d.dish_type),
-            action: 'ignore' as const,
-            rating: 7,
-            notes: '',
-            duplicate: findDuplicate(d.name, existingDishes),
-          }))
+          result.dishes.map((d) => {
+            // The model's match first (it can read abbreviations), then the
+            // name itself.
+            const saved = (d.matches && existingDishes.find((e) => normalizeName(e.name) === normalizeName(d.matches!))) ||
+              findDuplicate(d.name, existingDishes);
+            return {
+              name: d.name,
+              dish_type: normalizeDishType(saved?.dish_type ?? d.dish_type),
+              group: normalizeDishType(saved?.dish_type ?? d.dish_type),
+              action: 'ignore' as const,
+              rating: saved?.rating ?? 7,
+              notes: '',
+              duplicate: saved?.name,
+              existing: existingOf(saved),
+            };
+          })
         );
         showToast(`Found ${result.dishes.length} dish${result.dishes.length > 1 ? 'es' : ''}!`);
       } else {
@@ -192,26 +231,58 @@ export function AddDishPage() {
     );
   };
 
-  const handleSaveScanned = () => {
+  // Saves the picked rows of either list: rows marked "update" change the dish
+  // already saved (its rating, and notes if any were typed); the rest are
+  // added as new dishes in the background.
+  const saveChosen = async (list: ScannedDish[]) => {
     if (!restaurantId) return;
-    const toSave = scannedDishes.filter((d) => d.action !== 'ignore');
-    if (toSave.length === 0) {
+    const chosen = list.filter((d) => d.action !== 'ignore');
+    if (chosen.length === 0) {
       showToast('Select at least one dish to add.');
       return;
     }
-    const items: Partial<Dish>[] = toSave.map((dish) => ({
-      restaurant_id: restaurantId,
-      name: dish.name,
-      dish_type: normalizeDishType(dish.dish_type),
-      want_to_try: dish.action === 'want_to_try',
-      rating: dish.action === 'want_to_try' ? null : dish.rating,
-      notes: dish.notes,
-      photos: [],
-    }));
-    startBackgroundImport(items, restaurant?.name || 'Restaurant');
+    const updates = chosen.filter((d) => d.action === 'update' && d.existing);
+    const additions = chosen.filter((d) => !(d.action === 'update' && d.existing));
+
+    if (updates.length > 0) {
+      try {
+        await Promise.all(updates.map((d) => {
+          const changes: Partial<Dish> = { rating: d.rating, want_to_try: false };
+          if (d.notes.trim()) changes.notes = d.notes;
+          return updateDish(d.existing!.id, changes);
+        }));
+        // Paint the new ratings straight away on the restaurant page.
+        const cached = getCached<Dish[]>(`dishes:${restaurantId}`);
+        if (cached) {
+          setCached(`dishes:${restaurantId}`, cached.map((dish) => {
+            const u = updates.find((d) => d.existing!.id === dish.id);
+            return u ? { ...dish, rating: u.rating, want_to_try: false, notes: u.notes.trim() ? u.notes : dish.notes } : dish;
+          }));
+        }
+      } catch (err) {
+        showToast(`Couldn't update: ${err instanceof Error ? err.message : 'unknown error'}`);
+        return;
+      }
+    }
+
+    if (additions.length > 0) {
+      startBackgroundImport(additions.map((dish) => ({
+        restaurant_id: restaurantId,
+        name: dish.name,
+        dish_type: normalizeDishType(dish.dish_type),
+        want_to_try: dish.action === 'want_to_try',
+        rating: dish.action === 'rate' ? dish.rating : null,
+        notes: dish.notes,
+        photos: [],
+      })), restaurant?.name || 'Restaurant');
+    } else {
+      showToast(`Updated ${updates.length} dish${updates.length !== 1 ? 'es' : ''}`);
+    }
     clearPersistentState(draft);
     navigate(`/restaurant/${restaurantId}`, { replace: true });
   };
+
+  const handleSaveScanned = () => saveChosen(scannedDishes);
 
   // ─── URL handlers ───────────────────────────────────────────────────────────
 
@@ -224,7 +295,8 @@ export function AddDishPage() {
         action: 'ignore' as const,
         rating: 7,
         notes: '',
-        duplicate: findDuplicate(d.name, existing),
+        duplicate: findDuplicate(d.name, existing)?.name,
+        existing: existingOf(findDuplicate(d.name, existing)),
       })),
     [],
   );
@@ -313,25 +385,7 @@ export function AddDishPage() {
   const selectedUrlCount = urlDishes.filter((d) => d.action !== 'ignore').length;
   const duplicateUrlCount = urlDishes.filter((d) => d.duplicate).length;
 
-  const handleSaveUrl = () => {
-    if (!restaurantId) return;
-    const toSave = urlDishes.filter((d) => d.action !== 'ignore');
-    if (toSave.length === 0) {
-      showToast('Select at least one dish to add.');
-      return;
-    }
-    const items: Partial<Dish>[] = toSave.map((dish) => ({
-      restaurant_id: restaurantId,
-      name: dish.name,
-      dish_type: normalizeDishType(dish.dish_type),
-      want_to_try: dish.action === 'want_to_try',
-      rating: dish.action === 'rate' ? dish.rating : null,
-      notes: dish.notes,
-    }));
-    startBackgroundImport(items, restaurant?.name || 'Restaurant');
-    clearPersistentState(draft);
-    navigate(`/restaurant/${restaurantId}`, { replace: true });
-  };
+  const handleSaveUrl = () => saveChosen(urlDishes);
 
   // ─── Manual entry handler ────────────────────────────────────────────────────
 
@@ -733,7 +787,7 @@ export function AddDishPage() {
                   onClick={handleSaveScanned}
                   disabled={scannedDishes.every((d) => d.action === 'ignore')}
                 >
-                  {`Add ${scannedDishes.filter((d) => d.action !== 'ignore').length} Dish${scannedDishes.filter((d) => d.action !== 'ignore').length !== 1 ? 'es' : ''}`}
+                  {saveLabel(scannedDishes)}
                 </button>
               </div>
             </>
@@ -898,7 +952,7 @@ export function AddDishPage() {
                   disabled={urlDishes.every((d) => d.action === 'ignore')}
                   onClick={handleSaveUrl}
                 >
-                  {`Add ${urlDishes.filter((d) => d.action !== 'ignore').length} Dish${urlDishes.filter((d) => d.action !== 'ignore').length !== 1 ? 'es' : ''}`}
+                  {saveLabel(urlDishes)}
                 </button>
               </div>
             </>
